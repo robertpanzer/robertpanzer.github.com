@@ -1,0 +1,11 @@
+title=About Robert Panzer
+date=2014-04-02
+type=page
+status=published
+~~~~~~
+
+I am a software engineer working on JavaEE based applications. 
+I live in Paderborn, Germany,
+Everything you can find here is my personal opinion and does not necessarily reflect the opinions of my employer. Or even me.
+
+You can follow me on https://twitter.com/bobbytank42[twitter]

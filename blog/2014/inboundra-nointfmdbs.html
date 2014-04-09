@@ -222,7 +222,7 @@ public class FSWatcherMDB implements FSWatcher {
 <p>The fact that the MDB is called asynchronously adds an additional difficulty to the test. The first na&iuml;ve approach would be to wait a certain amount of time and check if a method has been called on the MDB. But that will make your tests run very long even when everything is ok and the MDB is called immediately. Or your tests could become fragile if you wait for a too short amount of time.</p>
 </div>
 <div class="paragraph">
-<p>Andrew Lee Rubinger and Aslak Knutsen propose an improved approach in their book "Continuous Enterprise Development in Java" using the class <code>java.util.concurrent.CyclicBarrier</code> added by Java SE 7. It implements a barrier that most of us probably from the CS lectures in parallel programming. Together with CDI events this makes test pass immediately if everything works fine and make it only wait if there is a failure.</p>
+<p>Andrew Lee Rubinger and Aslak Knutsen propose an improved approach in their book "Continuous Enterprise Development in Java" using the class <code>java.util.concurrent.CyclicBarrier</code> added by Java SE 7. It implements a barrier that most of us probably know from the CS lectures in parallel programming. Together with CDI events this makes test pass immediately if everything works fine and make it only wait if there is a failure.</p>
 </div>
 <div class="paragraph">
 <p>So the idea is that the MDB fires a CDI event if a method is called. This event is observed by test class that walks into the barrier. The test method is the second party going into the barrier.</p>

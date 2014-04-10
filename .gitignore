@@ -1,10 +1,11 @@
-blog
-css
-hubtogo
-img
-js
-tags
+/blog
+/css
+/output
+/hubtogo
+/img
+/js
+/tags
 *.html
 *.ico
-feed.xml
+/feed.xml
 

@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"/>
+    <title>Testing outbound resource adapters with Arquillian on an embedded TomEE</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <meta name="keywords" content="">
+    <meta name="generator" content"JBake">
+
+    <!-- Le styles -->
+    <link href="/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/css/asciidoctor.css" rel="stylesheet">
+    <link href="/css/base.css" rel="stylesheet">
+    <link href="/css/bootstrap-responsive.min.css" rel="stylesheet">
+    <link href="/css/disqus.css" rel="stylesheet">
+
+    <!-- HTML5 shim, for IE6-8 support of HTML5 elements -->
+    <!--[if lt IE 9]>
+      <script src="/js/html5shiv.js"></script>
+    <![endif]-->
+
+    <!-- Fav and touch icons -->
+    <!--<link rel="apple-touch-icon-precomposed" sizes="144x144" href="../assets/ico/apple-touch-icon-144-precomposed.png">
+    <link rel="apple-touch-icon-precomposed" sizes="114x114" href="../assets/ico/apple-touch-icon-114-precomposed.png">
+    <link rel="apple-touch-icon-precomposed" sizes="72x72" href="../assets/ico/apple-touch-icon-72-precomposed.png">
+    <link rel="apple-touch-icon-precomposed" href="../assets/ico/apple-touch-icon-57-precomposed.png">-->
+    <link rel="shortcut icon" href="favicon.ico">
+
+  </head>
+  <body>
+    <div id="wrap">
+	
+	<!-- Fixed navbar -->
+      <div class="navbar navbar-fixed-top">
+        <div class="navbar-inner">
+          <div class="container">
+            <button type="button" class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+              <span class="icon-bar"></span>
+              <span class="icon-bar"></span>
+              <span class="icon-bar"></span>
+            </button>
+            <a class="brand" href="/">Robert Panzers blog</a>
+            <div class="nav-collapse collapse">
+              <ul class="nav">
+                <li><a href="/index.html">Blog</a></li>
+                <li><a href="/hubtogo/index.html">Hub to go</a></li>
+                <li><a href="/about.html">About</a></li>
+              </ul>
+            </div><!--/.nav-collapse -->
+          </div>
+        </div>
+      </div>
+      <div class="container">
+	
+	<div class="page-header">
+		<h1>Testing outbound resource adapters with Arquillian on an embedded TomEE</h1>
+	</div>
+
+	<p><em>14 April 2014</em></p>
+
+	<p><div id="preamble">
+<div class="sectionbody">
+<div class="paragraph">
+<p>This post shows how to test custom resource adapters with own implementations for the connection factory, managed connection factory etc using Arquillian on TomEE embedded.</p>
+</div>
+<div class="paragraph">
+<p>When developing a new custom resource adapter that have their own connections, managed connections, connection factories and managed connection factories you have a lot of code-compile-test loops because you have to do a lot of boiler plate code. The more often you repeat this the more likely you wish to accelerate this.</p>
+</div>
+<div class="paragraph">
+<p>Arquillian comes to the rescue by automating deployment and test execution. The next idea to accelerate this is to use an embedded TomEE as the test container, which seems to be one of the fastest application servers.</p>
+</div>
+<div class="paragraph">
+<p>While having many examples for how to define JDBC or JMS connection factories in the <code>tomee.xml</code> or in the <code>arquillian.xml</code> using system properties (<a href="http://svn.apache.org/repos/asf/tomee/tomee/tags/tomee-1.5.2/arquillian/arquillian-tomee-tests/arquillian-tomee-webprofile-tests/src/test/resources/arquillian.xml">http://svn.apache.org/repos/asf/tomee/tomee/tags/tomee-1.5.2/arquillian/arquillian-tomee-tests/arquillian-tomee-webprofile-tests/src/test/resources/arquillian.xml</a>), I did not find a description of how to define a connection factory for my own custom outbound resource adapter.</p>
+</div>
+<div class="paragraph">
+<p>Suppose that you have a managed connection factory like this:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint java language-java"><code>package foo.test;
+
+import javax.resource.spi.ManagedConnection;
+import javax.resource.spi.ManagedConnectionFactory;
+
+@ConnectionDefinition(
+        connection=IMyConnection.class,
+        connectionImpl=MyConnectionImpl.class,
+        connectionFactory=IMyConnectionFactory.class,
+        connectionFactoryImpl=MyConnectionFactoryImpl.class)
+public class MyManagedConnectionFactory implements ManagedConnectionFactory {
+    ...
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>You also need a ResourceAdapter bean, the methods can remain empty if you do not support inbound communication:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint java language-java"><code>@Connector(
+        vendorName="FooBar",
+        displayName="MyResourceAdapter",
+        transactionSupport=TransactionSupportLevel.NoTransaction)
+public class MyResourceAdapter implements ResourceAdapter {
+
+    public void start(BootstrapContext ctx) throws ResourceAdapterInternalException {}
+
+    public void stop() {}
+
+    public void endpointActivation(MessageEndpointFactory endpointFactory,ActivationSpec spec) throws ResourceException {
+        throw new UnsupportedOperationException();
+    }
+
+    public void endpointDeactivation(MessageEndpointFactory endpointFactory, ActivationSpec spec) {
+        throw new UnsupportedOperationException();
+    }
+
+    public XAResource[] getXAResources(ActivationSpec[] specs) throws ResourceException {
+        return null;
+    }
+
+    // equals and hashCode are required per the specification. As we do not have any properties
+    // on the bean I don't know a better implementation than calling the super implementation.
+    public boolean equals(Object o) {
+        return super.equals(o);
+    }
+
+    public int hashCode() {
+        return super.hashCode();
+    }
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The goal is to get an <code>IMyConnectionFactory</code> injected into the test class:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint java language-java"><code>@RunWith(Arquillian.class)
+public class JCATest {
+
+	@Deployment
+	public static EnterpriseArchive deploy() throws Exception {
+	    JavaArchive rarlib = ShrinkWrap.create(JavaArchive.class, "rarlib.jar")
+	        .addClasses(
+	            IMyConnection.class,
+	            MyConnectionImpl.class,
+	            IMyConnectionFactory.class,
+	            MyConnectionFactoryImpl.class,
+	            MyManagedConnectionFactory.class,
+	            ...);
+
+	    ResourceAdapterArchive rar = ShrinkWrap.create(ResourceAdapterArchive.class, "testra.rar")
+	        .addAsLibrary(rarlib);
+
+	    JavaArchive testjar = ShrinkWrap.create(JavaArchive.class, "test.jar")
+	        .addClasses(JCATest.class)
+	        .addAsManifestResource(EmptyAsset.INSTANCE, "beans.xml");
+
+	    EnterpriseArchive ear = ShrinkWrap.create(EnterpriseArchive.class, "test.ear")
+	    	.addAsModule(rar)
+            .addAsLibrary(testjar);
+
+        return ear;
+	}
+
+	@Resource
+	private IMyConnectionFactory connectionFactory;
+
+	@Test
+	public void test() {
+	    ...
+	}
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>On the first run the test will not start at all because the connection factory cannot be injected:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>org.apache.openejb.OpenEJBException: Can't find resource for class foo.test.JCATest#connectionFactory. (No provider available for resource-ref 'null' of type 'foo.test.IMyConnectionFactory' for 'ear-scoped-cdi-beans_ratest32.Comp1627526021'.)
+	at org.apache.openejb.config.AutoConfig.processResourceRef(AutoConfig.java:1174)
+	at org.apache.openejb.config.AutoConfig.deploy(AutoConfig.java:858)
+	at org.apache.openejb.config.AutoConfig.deploy(AutoConfig.java:193)
+	at org.apache.openejb.config.ConfigurationFactory$Chain.deploy(ConfigurationFactory.java:396)
+	at org.apache.openejb.config.ConfigurationFactory.configureApplication(ConfigurationFactory.java:938)
+	at org.apache.openejb.config.ConfigurationFactory.configureApplication(ConfigurationFactory.java:768)
+	at org.apache.tomee.embedded.Container.deploy(Container.java:368)
+	at org.apache.tomee.embedded.Container.deploy(Container.java:346)
+	at org.apache.openejb.arquillian.embedded.EmbeddedTomEEContainer.deploy(EmbeddedTomEEContainer.java:134)
+	at org.jboss.arquillian.container.impl.client.container.ContainerDeployController$3.call(ContainerDeployController.java:161)
+	at org.jboss.arquillian.container.impl.client.container.ContainerDeployController$3.call(ContainerDeployController.java:128)
+	at org.jboss.arquillian.container.impl.client.container.ContainerDeployController.executeOperation(ContainerDeployController.java:271)
+	at org.jboss.arquillian.container.impl.client.container.ContainerDeployController.deploy(ContainerDeployController.java:127)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>If you were using a <code>tomee.xml</code> you would configure the connection factory like this. The trick is to define the managed connection factory class using the attribute <code>class-name</code> instead of using the attribute <code>type</code> that is used for known resource providers, like JDBC datasources etc.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint xml language-xml"><code>&lt;tomee&gt;
+    &lt;Resource id="MyConnectionFactory"
+       class-name="foo.test.MyManagedConnectionFactory"&gt;
+    &lt;/Resource&gt;
+&lt;/tomee&gt;</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>If you are testing using arquillian you can use the property definition style directly in the <code>arquillian.xml</code>.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint xml language-xml"><code>&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;arquillian xmlns="http://jboss.org/schema/arquillian"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.jboss.org/schema/arquillian http://www.jboss.org/schema/arquillian/arquillian_1_0.xsd"&gt;
+
+  &lt;container qualifier="tomee-embedded" default="true"&gt;
+    &lt;configuration&gt;
+      &lt;property name="httpPort"&gt;-1&lt;/property&gt;
+      &lt;property name="stopPort"&gt;-1&lt;/property&gt;
+      &lt;property name="dir"&gt;target/tomee-embedded&lt;/property&gt;
+      &lt;property name="appWorkingDir"&gt;target/arquillian-embedded-working-dir&lt;/property&gt;
+      &lt;property name="portRange"&gt;20001-30000&lt;/property&gt;
+      &lt;property name="properties"&gt;
+        MyConnectionFactory = new://Resource?class-name=foo.test.MyManagedConnectionFactory
+      &lt;/property&gt;
+    &lt;/configuration&gt;
+  &lt;/container&gt;
+&lt;/arquillian&gt;</code></pre>
+</div>
+</div>
+</div>
+</div></p>
+
+	<hr>
+	
+		</div>
+		<div id="push"></div>
+    </div>
+
+        <div id="disqus_thread"></div>
+    <script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'robertpanzersblog'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+    
+
+    <!-- Le javascript
+    ================================================== -->
+    <!-- Placed at the end of the document so the pages load faster -->
+    <script src="/js/jquery-1.9.1.min.js"></script>
+    <script src="/js/bootstrap.min.js"></script>
+    <script src="/js/run_prettify.js"></script>
+    
+    <div id="footer">
+      <div class="container">
+        <p class="muted credit">&copy; 2013 | Mixed with <a href="http://twitter.github.com/bootstrap/">Bootstrap v2.3.1</a> | Baked with <a href="http://jbake.org">JBake v2.2.1</a></p>
+      </div>
+    </div>
+    
+
+  </body>
+</html>

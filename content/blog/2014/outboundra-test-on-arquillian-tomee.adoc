@@ -1,0 +1,171 @@
+title=Testing outbound resource adapters with Arquillian on an embedded TomEE
+date=2014-04-14
+type=post
+tags=TomEE, JCA, Arquillian, JavaEE
+status=published
+disqus=true
+~~~~~~
+= Testing outbound resource adapters with Arquillian on an embedded TomEE
+Robert Panzer
+2014-04-14
+
+This post shows how to test custom resource adapters with own implementations for the connection factory, managed connection factory etc using Arquillian on TomEE embedded.
+
+When developing a new custom resource adapter that have their own connections, managed connections, connection factories and managed connection factories you have a lot of code-compile-test loops because you have to do a lot of boiler plate code. The more often you repeat this the more likely you wish to accelerate this.
+
+Arquillian comes to the rescue by automating deployment and test execution. The next idea to accelerate this is to use an embedded TomEE as the test container, which seems to be one of the fastest application servers.
+
+While having many examples for how to define JDBC or JMS connection factories in the +tomee.xml+ or in the +arquillian.xml+ using system properties (http://svn.apache.org/repos/asf/tomee/tomee/tags/tomee-1.5.2/arquillian/arquillian-tomee-tests/arquillian-tomee-webprofile-tests/src/test/resources/arquillian.xml), I did not find a description of how to define a connection factory for my own custom outbound resource adapter. 
+
+Suppose that you have a managed connection factory like this:
+
+[source,java]
+----
+package foo.test;
+
+import javax.resource.spi.ManagedConnection;
+import javax.resource.spi.ManagedConnectionFactory;
+
+@ConnectionDefinition(
+        connection=IMyConnection.class,
+        connectionImpl=MyConnectionImpl.class,
+        connectionFactory=IMyConnectionFactory.class,
+        connectionFactoryImpl=MyConnectionFactoryImpl.class)
+public class MyManagedConnectionFactory implements ManagedConnectionFactory {
+    ...
+}
+----
+
+You also need a ResourceAdapter bean, the methods can remain empty if you do not support inbound communication:
+
+[source,java]
+----
+@Connector(
+        vendorName="FooBar",
+        displayName="MyResourceAdapter",
+        transactionSupport=TransactionSupportLevel.NoTransaction)
+public class MyResourceAdapter implements ResourceAdapter {
+
+    public void start(BootstrapContext ctx) throws ResourceAdapterInternalException {}
+
+    public void stop() {}
+
+    public void endpointActivation(MessageEndpointFactory endpointFactory,ActivationSpec spec) throws ResourceException {
+        throw new UnsupportedOperationException();
+    }
+
+    public void endpointDeactivation(MessageEndpointFactory endpointFactory, ActivationSpec spec) {
+        throw new UnsupportedOperationException();
+    }
+
+    public XAResource[] getXAResources(ActivationSpec[] specs) throws ResourceException {
+        return null;
+    }
+
+    // equals and hashCode are required per the specification. As we do not have any properties
+    // on the bean I don't know a better implementation than calling the super implementation.
+    public boolean equals(Object o) {
+        return super.equals(o);
+    }
+    
+    public int hashCode() {
+        return super.hashCode();
+    }
+}
+----
+
+The goal is to get an +IMyConnectionFactory+ injected into the test class:
+
+[source,java]
+----
+@RunWith(Arquillian.class)
+public class JCATest {
+	
+	@Deployment
+	public static EnterpriseArchive deploy() throws Exception {
+	    JavaArchive rarlib = ShrinkWrap.create(JavaArchive.class, "rarlib.jar")
+	        .addClasses(
+	            IMyConnection.class,
+	            MyConnectionImpl.class,
+	            IMyConnectionFactory.class,
+	            MyConnectionFactoryImpl.class,
+	            MyManagedConnectionFactory.class,
+	            ...);
+
+	    ResourceAdapterArchive rar = ShrinkWrap.create(ResourceAdapterArchive.class, "testra.rar")
+	        .addAsLibrary(rarlib);
+
+	    JavaArchive testjar = ShrinkWrap.create(JavaArchive.class, "test.jar")
+	        .addClasses(JCATest.class)
+	        .addAsManifestResource(EmptyAsset.INSTANCE, "beans.xml");
+
+	    EnterpriseArchive ear = ShrinkWrap.create(EnterpriseArchive.class, "test.ear")
+	    	.addAsModule(rar)
+            .addAsLibrary(testjar);
+
+        return ear;
+	}
+
+	@Resource
+	private IMyConnectionFactory connectionFactory;
+
+	@Test
+	public void test() {
+	    ...
+	}
+}
+----
+
+On the first run the test will not start at all because the connection factory cannot be injected:
+
+----
+org.apache.openejb.OpenEJBException: Can't find resource for class foo.test.JCATest#connectionFactory. (No provider available for resource-ref 'null' of type 'foo.test.IMyConnectionFactory' for 'ear-scoped-cdi-beans_ratest32.Comp1627526021'.)
+	at org.apache.openejb.config.AutoConfig.processResourceRef(AutoConfig.java:1174)
+	at org.apache.openejb.config.AutoConfig.deploy(AutoConfig.java:858)
+	at org.apache.openejb.config.AutoConfig.deploy(AutoConfig.java:193)
+	at org.apache.openejb.config.ConfigurationFactory$Chain.deploy(ConfigurationFactory.java:396)
+	at org.apache.openejb.config.ConfigurationFactory.configureApplication(ConfigurationFactory.java:938)
+	at org.apache.openejb.config.ConfigurationFactory.configureApplication(ConfigurationFactory.java:768)
+	at org.apache.tomee.embedded.Container.deploy(Container.java:368)
+	at org.apache.tomee.embedded.Container.deploy(Container.java:346)
+	at org.apache.openejb.arquillian.embedded.EmbeddedTomEEContainer.deploy(EmbeddedTomEEContainer.java:134)
+	at org.jboss.arquillian.container.impl.client.container.ContainerDeployController$3.call(ContainerDeployController.java:161)
+	at org.jboss.arquillian.container.impl.client.container.ContainerDeployController$3.call(ContainerDeployController.java:128)
+	at org.jboss.arquillian.container.impl.client.container.ContainerDeployController.executeOperation(ContainerDeployController.java:271)
+	at org.jboss.arquillian.container.impl.client.container.ContainerDeployController.deploy(ContainerDeployController.java:127)
+----
+
+If you were using a +tomee.xml+ you would configure the connection factory like this. The trick is to define the managed connection factory class using the attribute +class-name+ instead of using the attribute +type+ that is used for known resource providers, like JDBC datasources etc.
+
+[source,xml]
+----
+<tomee>
+    <Resource id="MyConnectionFactory"
+       class-name="foo.test.MyManagedConnectionFactory">
+    </Resource>
+</tomee>
+----
+
+If you are testing using arquillian you can use the property definition style directly in the +arquillian.xml+.
+
+[source,xml]
+----
+<?xml version="1.0" encoding="UTF-8"?>
+<arquillian xmlns="http://jboss.org/schema/arquillian"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.jboss.org/schema/arquillian http://www.jboss.org/schema/arquillian/arquillian_1_0.xsd">
+
+  <container qualifier="tomee-embedded" default="true">
+    <configuration>
+      <property name="httpPort">-1</property>
+      <property name="stopPort">-1</property>
+      <property name="dir">target/tomee-embedded</property>
+      <property name="appWorkingDir">target/arquillian-embedded-working-dir</property>
+      <property name="portRange">20001-30000</property>
+      <property name="properties">
+        MyConnectionFactory = new://Resource?class-name=foo.test.MyManagedConnectionFactory
+      </property>
+    </configuration>
+  </container>
+</arquillian>
+----

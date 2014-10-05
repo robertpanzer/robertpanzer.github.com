@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"/>
+    <title>Thread pool configuration for inbound resource adapters on TomEE</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <meta name="keywords" content="">
+    <meta name="generator" content"JBake">
+
+    <!-- Le styles -->
+    <link href="/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/css/asciidoctor.css" rel="stylesheet">
+    <link href="/css/base.css" rel="stylesheet">
+    <link href="/css/bootstrap-responsive.min.css" rel="stylesheet">
+    <link href="/css/disqus.css" rel="stylesheet">
+
+    <!-- HTML5 shim, for IE6-8 support of HTML5 elements -->
+    <!--[if lt IE 9]>
+      <script src="/js/html5shiv.js"></script>
+    <![endif]-->
+
+    <!-- Fav and touch icons -->
+    <!--<link rel="apple-touch-icon-precomposed" sizes="144x144" href="../assets/ico/apple-touch-icon-144-precomposed.png">
+    <link rel="apple-touch-icon-precomposed" sizes="114x114" href="../assets/ico/apple-touch-icon-114-precomposed.png">
+    <link rel="apple-touch-icon-precomposed" sizes="72x72" href="../assets/ico/apple-touch-icon-72-precomposed.png">
+    <link rel="apple-touch-icon-precomposed" href="../assets/ico/apple-touch-icon-57-precomposed.png">-->
+    <link rel="shortcut icon" href="favicon.ico">
+
+  </head>
+  <body>
+    <div id="wrap">
+	
+	<!-- Fixed navbar -->
+      <div class="navbar navbar-fixed-top">
+        <div class="navbar-inner">
+          <div class="container">
+            <button type="button" class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+              <span class="icon-bar"></span>
+              <span class="icon-bar"></span>
+              <span class="icon-bar"></span>
+            </button>
+            <a class="brand" href="/">Robert Panzers blog</a>
+            <div class="nav-collapse collapse">
+              <ul class="nav">
+                <li><a href="/index.html">Blog</a></li>
+                <li><a href="/hubtogo/index.html">Hub to go</a></li>
+                <li><a href="/about.html">About</a></li>
+              </ul>
+            </div><!--/.nav-collapse -->
+          </div>
+        </div>
+      </div>
+      <div class="container">
+	
+	<div class="page-header">
+		<h1>Thread pool configuration for inbound resource adapters on TomEE</h1>
+	</div>
+
+	<p><em>05 Oktober 2014</em></p>
+
+	<p><div id="preamble">
+<div class="sectionbody">
+<div class="paragraph">
+<p>Developing resource adapters is surely one of the least known parts of the JavaEE platform.
+Besides developing the component additional knowledge is required for operating the component.
+Whereas for servlets most of the customization work for an operating environment is done by configuring the WebContainer thread pool size and the resource pool sizes, this is slightly more complex for resource adapters.
+This article presents a demo application that allows to play around the properties that have to be taken care of.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_the_demo_application">The Demo application</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The demo application is very simple.
+You can try out this application yourself by cloning the repository <a href="https://github.com/robertpanzer/resource-adapter-configuration.git">robertpanzer/resource-adapter-configuration</a> from Github.</p>
+</div>
+<div class="paragraph">
+<p>It consists solely of an inbound resource adapter that invokes MDBs implementing the listener interface <code>ITestListener</code>:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">public interface ITestListener {
+
+    void process(int i);
+
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>After activation of a MDB the resource adapter invokes the MDB 1000 times passing the number of iterations.
+To invoke a MDB the resource adapter has to schedule a <code>Work</code> object via the so-called <code>WorkManager</code> so that the actions are executed by managed threads and do not take down the server.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">public void endpointActivation(MessageEndpointFactory endpointFactory, ActivationSpec spec) throws ResourceException {
+    WorkManager workManager = ctx.getWorkManager();
+
+    for (int i = 0; i &lt; iterations; i++) {
+        workManager.scheduleWork( <b class="conum">(1)</b>
+            new TestWork(i, endpointFactory), <b class="conum">(2)</b>
+            100, <b class="conum">(3)</b>
+            null,
+            null);
+    }
+}</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<ol>
+<li>
+<p>Every logic that invokes an application component has to be processed by a managed thread.
+Therefore the work is scheduled via the <code>WorkManager</code></p>
+</li>
+<li>
+<p>The work object requires the current iteration number to pass the correct argument to the listener and the endpoint factory to get a handle to the associated MDB.</p>
+</li>
+<li>
+<p>The scheduled work should not start before 100 milliseconds have passed.</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>The WorkManager is offered by the application server and acts as an executor that uses an own thread pool.
+The <code>Work</code> object comes from the concrete resource adapter and usually invokes an <code>Endpoint</code>, i.e. the MDB:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">class TestWork implements Work {
+
+    private final int iteration; <b class="conum">(1)</b>
+    private MessageEndpointFactory endpointFactory;
+
+    TestWork(int iteration, MessageEndpointFactory endpointFactory) {
+        this.iteration = iteration;
+        this.endpointFactory = endpointFactory;
+    }
+
+    @Override
+    public void release() {}
+
+    @Override
+    public void run() { <b class="conum">(2)</b>
+        System.out.println("TestWork.run on thread " + Thread.currentThread());
+        try {
+            MessageEndpoint endpoint = endpointFactory.createEndpoint(null);
+            endpoint.beforeDelivery(listenerMethod);
+            listenerMethod.invoke(endpoint, iteration); <b class="conum">(3)</b>
+            endpoint.afterDelivery();
+            endpoint.release();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<ol>
+<li>
+<p>There is one <code>Work</code> instance per iteration.
+That is one <code>Work</code> object is used for one invocation of the MDB.</p>
+</li>
+<li>
+<p>The <code>run()</code> method is already executed by the thread managed by the <code>WorkManager</code>.
+The MDB is executed by the same thread.</p>
+</li>
+<li>
+<p>This is the magic location that invokes the MDB represented by the <code>endpoint</code> passing the parameter <code>iteration</code>.</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>In the demo application the MDB <code>TestMDB</code> does nothing more than counting the number of calls:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">@MessageDriven
+public class TestMDB implements ITestListener {
+
+    public static AtomicInteger numberOfCalls = new AtomicInteger();
+
+    @Override
+    public void process(int i) {
+        numberOfCalls.incrementAndGet();
+        System.out.println("Iteration = " + i);
+    }
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The demo application is executed as an <a href="https://arquillian.org">Arquillian</a> test.
+This test waits at most 10 seconds until all expected calls of the MDB have been executed.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">int expectedIterations = 1000;
+await().untilAtomic(TestMDB.numberOfCalls, is(expectedIterations));</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>This test can be executed by simply calling the <a href="http://gradle.org">Gradle</a> build:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>./gradlew clean test</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>If you execute this you will likely see that this test fails!
+But why?</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_thread_pools_vs_bean_pools">Thread pools vs Bean pools</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The test fails because not all MDB invocations pass successfully.
+The expected number of calls is 1000 and on my local machine I see around 950 invocations.
+So where do these calls get lost?
+If you analyze the output of the test you see exceptions like this:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>javax.resource.spi.UnavailableException: Only 10 instances can be created
+    at org.apache.openejb.core.mdb.MdbInstanceFactory.createInstance(MdbInstanceFactory.java:117)
+    at org.apache.openejb.core.mdb.EndpointHandler.&lt;init&gt;(EndpointHandler.java:78)
+    at org.apache.openejb.core.mdb.EndpointFactory.createEndpoint(EndpointFactory.java:78)
+    at foo.bar.TestResourceAdapter$TestWork.run(TestResourceAdapter.java:110)
+    at org.apache.geronimo.connector.work.WorkerContext.run(WorkerContext.java:366)
+    at org.apache.geronimo.connector.work.pool.NamedRunnable.run(NamedRunnable.java:32)
+    at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
+    at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+    at java.lang.Thread.run(Thread.java:745)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Apparently someone tries to invoke the MDB even though the maximum number of beans is in use.
+Obviously the default maximum number of beans is 10.</p>
+</div>
+<div class="paragraph">
+<p>If you look at the top of the output you will see that the default thread pool size for a resource adapter is 30:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Okt 04, 2014 10:30:35 PM org.apache.openejb.assembler.classic.Assembler createResource
+INFORMATION: Thread pool size for 'test.rarRA' is (30)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>And the Work objects are executed by this thread pool as you can see from the output:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>foo.bar.RATest STANDARD_OUT
+    TestWork.run on thread Thread[test.rarRA-worker- - 6,5,main]</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>So here we have the conflict:
+30 threads are firing invocations concurrently at only 10 bean instances.
+And according to the specification the application server is allowed to refuse the call with an <code>UnavailableException</code>.
+This default configuration can lead to errors if the resource adapter does not handle these exception by retrying the invocation.</p>
+</div>
+<div class="paragraph">
+<p>At first thought this does not make any sense and makes you probably think why are these two pool sizes not identical?
+But it makes sense if you have multiple MDBs that are activated for the same resource adapter:
+If you have three MDBs that register for the same resource adapter the math works again as long as the calls are distributed equally across the MDBs.</p>
+</div>
+<div class="paragraph">
+<p>So what seems to be necessary is the possibility to configure the MDB pool size to match the number of threads.
+But from a performance point of view it is also necessary to configure the thread pool size:
+According to the expected load and the behaviour of the application different thread pool sizes are required.
+The next sections will show how to simply configure these values.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_configure_the_thread_pool_size_of_a_resource_adapter">Configure the thread pool size of a resource adapter</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The log always shows the number of threads TomEE creates for the resource adapter:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Okt 04, 2014 10:30:35 PM org.apache.openejb.assembler.classic.Assembler createResource
+INFORMATION: Thread pool size for 'test.rarRA' is (30)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>From this entry you can take the information that the <em>ID</em> of the resource adapter is <code>test.rarRA</code>.
+To change the thread pool size you only have to define the system property <code>test.rarRa.threadPoolSize</code> to the desired value.</p>
+</div>
+<div class="paragraph">
+<p>So to make the test work you could for example reduce the thread pool size to 10 by setting the system property <code>-Dtest.rarRa.threadPoolSize=10</code>.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_configure_the_bean_pool_size_of_the_mdb">Configure the bean pool size of the MDB</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>When you analyze the log you will find an entry that shows that the MDB is being started:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>Okt 04, 2014 10:30:35 PM org.apache.openejb.assembler.classic.Assembler startEjbs
+INFORMATION: Created Ejb(deployment-id=TestMDB, ejb-name=TestMDB, container=test.rar)
+Okt 04, 2014 10:30:35 PM org.apache.openejb.assembler.classic.Assembler startEjbs
+INFORMATION: Started Ejb(deployment-id=TestMDB, ejb-name=TestMDB, container=test.rar)</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>So the <em>ID</em> of the MDB is <code>TestMDB</code> and you define the bean pool size by setting the system property <code>TestMDB.InstanceLimit</code> to the desired limit.</p>
+</div>
+<div class="paragraph">
+<p>To make the test work without changing the thread pool size you could also increase the number of MDB instances to 30 by setting the system property <code>-DTestMDB.InstanceLimit=30</code>.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_try_it_out">Try it out!</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>To try these statements I built the <code>build.gradle</code> file so that you can pass these system properties as project properties to the build.
+To test with a thread pool size of 20 and a bean pool size of 20 start the following command:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>./gradlew clean test -Ptest.rarRA.threadPoolSize=20 -PTestMDB.InstanceLimit=20</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The test should succeed now!</p>
+</div>
+<div class="paragraph">
+<p>You can play with different values to see how the behaviour changes.</p>
+</div>
+<div class="paragraph">
+<p>If you want to define the system properties when starting a real TomEE you can for example simply set the environment variable <code>CATALINA_OPTS</code>:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>CATALINA_OPTS=-Dtest.rarRA.threadPoolSize=20 -DTestMDB.InstanceLimit=20</pre>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_even_more_configuration">Even more configuration</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Regarding the resource adapter you cannot only configure the thread pool size via system properties but you can configure other properties as well.
+Just use the <em>ID</em> of the resource adapter as the prefix.
+In the example the number of iterations can be configured via the property <code>iterations</code>:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">@Connector
+public class TestResourceAdapter implements ResourceAdapter {
+
+    private int iterations = 1000;
+
+    public int getIterations() {
+        return iterations;
+    }
+
+    public void setIterations(int iterations) {
+        System.out.println("iterations = " + iterations);
+        this.iterations = iterations;
+    }
+
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>To change the number of iterations to 500 simply define the system property <code>test.rarRA.iterations</code> to 500:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>./gradlew clean test -Ptest.rarRA.iterations=500</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>or</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>CATALINA_OPTS=-Dtest.rarRA.iterations=500</pre>
+</div>
+</div>
+</div>
+</div></p>
+
+	<hr>
+	
+		</div>
+		<div id="push"></div>
+    </div>
+
+        <div id="disqus_thread"></div>
+    <script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'robertpanzersblog'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+    
+
+    <!-- Le javascript
+    ================================================== -->
+    <!-- Placed at the end of the document so the pages load faster -->
+    <script src="/js/jquery-1.9.1.min.js"></script>
+    <script src="/js/bootstrap.min.js"></script>
+    <script src="/js/run_prettify.js"></script>
+    
+    <div id="footer">
+      <div class="container">
+        <p class="muted credit">&copy; 2013 | Mixed with <a href="http://twitter.github.com/bootstrap/">Bootstrap v2.3.1</a> | Baked with <a href="http://jbake.org">JBake v2.3.2</a></p>
+      </div>
+    </div>
+    
+
+  </body>
+</html>

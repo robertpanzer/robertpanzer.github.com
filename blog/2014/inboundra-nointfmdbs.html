@@ -69,7 +69,7 @@
 <p>Even though it seems that all new features of Java EE 7 are around HTML5 including WebSockets, ManagedExecutors and Batch there are also some other more subtle additions that are worth trying out. One very interesting point for developers of resource adapters that went into EJB 3.2 and JCA 1.7 is the addition of message driven beans with no-method listener interfaces. Thanks go to David Blevins of Tomitribe for pointing me on that. Instead of having predefined methods on an interface Java EE 7 allows to reflect the MDB class and therefore invoke any public method of that.</p>
 </div>
 <div class="paragraph">
-<p>In this way an application is able to allow for developing MDBs that feel like JAX-RS endpoints. So you can check the methods of the MDB for annotations and dynamically dispatch an event of the connector. Here I present an example that you can also find on <a href="https://github.com/robertpanzer/filesystemwatch-connector">https://github.com/robertpanzer/filesystemwatch-connector</a>. This resource adapter uses the Java SE 7 java.nio FileSystem WatchService to observe a directory for file changes. Whenever a file is created, deleted or modified in that directory the MDB should be called.</p>
+<p>In this way an application is able to allow for developing MDBs that feel like JAX-RS endpoints. So you can check the methods of the MDB for annotations and dynamically dispatch an event of the connector. Here I present an example that you can also find on <a href="https://github.com/robertpanzer/filesystemwatch-connector" class="bare">https://github.com/robertpanzer/filesystemwatch-connector</a>. This resource adapter uses the Java SE 7 java.nio FileSystem WatchService to observe a directory for file changes. Whenever a file is created, deleted or modified in that directory the MDB should be called.</p>
 </div>
 </div>
 </div>
@@ -81,15 +81,15 @@
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="prettyprint java language-java"><code>public interface FSWatcher {}</code></pre>
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">public interface FSWatcher {}</code></pre>
 </div>
 </div>
 <div class="paragraph">
-<p>The MDB should implement methods that declare the type of event and the type of files for which they should be called, so that we get from MDBs having methods like <code>onCreate(File f)</code> to something like this:</p>
+<p>The MDB should implement methods that declare the type of event and the type of files for which they should be called, so that we get from MDBs having methods like onCreate(File f) to something like this:</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="prettyprint java language-java"><code>@MessageDriven(activationConfig = {
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">@MessageDriven(activationConfig = {
 	@ActivationConfigProperty(propertyName = "dir", propertyValue = ".") })
 public class FSWatcherMDB implements FSWatcher {
 	@Create(".*\\.txt")
@@ -107,11 +107,11 @@ public class FSWatcherMDB implements FSWatcher {
 <p>That&#8217;s pretty amazing, right? The MDB declares in its activationspec the directory it wants to watch. For every kind of event and file type it implements a method without having to dispatch itself. This code is very expressive and concise.</p>
 </div>
 <div class="paragraph">
-<p>The last missing part now is the resource adapter. The interesting part is the method <code>endpointActivation</code> that is called to register the MDB to the resource adapter:</p>
+<p>The last missing part now is the resource adapter. The interesting part is the method endpointActivation that is called to register the MDB to the resource adapter:</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="prettyprint java language-java"><code>	@Override
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">	@Override
 	public void endpointActivation(MessageEndpointFactory endpointFactory, ActivationSpec activationSpec) throws ResourceException {
 		FSWatcherActivationSpec fsWatcherAS = (FSWatcherActivationSpec) activationSpec;
 
@@ -127,7 +127,7 @@ public class FSWatcherMDB implements FSWatcher {
 
 			endpointFactoryToBeanClass.put(
 					endpointFactory,
-					endpointFactory.getEndpointClass()); <b>(1)</b>
+					endpointFactory.getEndpointClass()); <b class="conum">(1)</b>
 		} catch (IOException e) {
 			throw new ResourceException(e);
 		}
@@ -140,16 +140,16 @@ public class FSWatcherMDB implements FSWatcher {
 <div class="colist arabic">
 <ol>
 <li>
-<p><code>endpointFactory.getEndpointClass()</code> returns the pure Class of the MDB, not the version of the application server that decorates or subclasses the MDB.</p>
+<p>endpointFactory.getEndpointClass() returns the pure Class of the MDB, not the version of the application server that decorates or subclasses the MDB.</p>
 </li>
 </ol>
 </div>
 <div class="paragraph">
-<p>Now when an event is fired by the watch service the resource adapter can check the MDBs methods and call them if the annotations match. All this is done on a separate thread spawned by the resource adapter that waits for events from the <code>WatchService</code>.</p>
+<p>Now when an event is fired by the watch service the resource adapter can check the MDBs methods and call them if the annotations match. All this is done on a separate thread spawned by the resource adapter that waits for events from the WatchService.</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="prettyprint java language-java"><code>	private void dispatchEvents(List&lt;WatchEvent&lt;?&gt;&gt; events, MessageEndpointFactory messageEndpointFactory) {
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">	private void dispatchEvents(List&lt;WatchEvent&lt;?&gt;&gt; events, MessageEndpointFactory messageEndpointFactory) {
 		for (WatchEvent&lt;?&gt; event: events) {
 			Path path = (Path) event.context();
 
@@ -190,11 +190,11 @@ public class FSWatcherMDB implements FSWatcher {
 <p>TomEE+ supports JCA resource adapters, even though it is declared as only being certified for the Java EE Web Profile. But it is the Java EE 6 Web Profile so you might think that this will not work. But in fact it does! With a small difference.</p>
 </div>
 <div class="paragraph">
-<p>If the activation spec defines methods <code>getBeanClass()</code> and <code>setBeanClass(Class&lt;?&gt; cls)</code> TomEE will set the bean class on the activation spec. So instead of calling <code>EndpointFactory.getBeanClass()</code> you simply call <code>FSWatcherActivationSpec.getBeanClass()</code>, so that you can change the method <code>endpointActivation</code> from above like this and it will work on TomEE as well as on Wildlfy:</p>
+<p>If the activation spec defines methods getBeanClass() and setBeanClass(Class&lt;?&gt; cls) TomEE will set the bean class on the activation spec. So instead of calling EndpointFactory.getBeanClass() you simply call FSWatcherActivationSpec.getBeanClass(), so that you can change the method endpointActivation from above like this and it will work on TomEE as well as on Wildlfy:</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="prettyprint java language-java"><code>			endpointFactoryToBeanClass.put(
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">			endpointFactoryToBeanClass.put(
 					endpointFactory,
 					fsWatcherAS.getBeanClass() != null ? fsWatcherAS.getBeanClass() : endpointFactory.getEndpointClass());</code></pre>
 </div>
@@ -224,7 +224,7 @@ public class FSWatcherMDB implements FSWatcher {
 <p>The fact that the MDB is called asynchronously adds an additional difficulty to the test. The first na&iuml;ve approach would be to wait a certain amount of time and check if a method has been called on the MDB. But that will make your tests run very long even when everything is ok and the MDB is called immediately. Or your tests could become fragile if you wait for a too short amount of time.</p>
 </div>
 <div class="paragraph">
-<p>Andrew Lee Rubinger and Aslak Knutsen propose an improved approach in their book "Continuous Enterprise Development in Java" using the class <code>java.util.concurrent.CyclicBarrier</code> added by Java SE 7. It implements a barrier that most of us probably know from the CS lectures in parallel programming. Together with CDI events this makes test pass immediately if everything works fine and make it only wait if there is a failure.</p>
+<p>Andrew Lee Rubinger and Aslak Knutsen propose an improved approach in their book "Continuous Enterprise Development in Java" using the class java.util.concurrent.CyclicBarrier added by Java SE 7. It implements a barrier that most of us probably know from the CS lectures in parallel programming. Together with CDI events this makes test pass immediately if everything works fine and make it only wait if there is a failure.</p>
 </div>
 <div class="paragraph">
 <p>So the idea is that the MDB fires a CDI event if a method is called. This event is observed by test class that walks into the barrier. The test method is the second party going into the barrier.</p>
@@ -234,7 +234,7 @@ public class FSWatcherMDB implements FSWatcher {
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="prettyprint java language-java"><code>@MessageDriven(activationConfig = { @ActivationConfigProperty(propertyName = "dir", propertyValue = ".") })
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">@MessageDriven(activationConfig = { @ActivationConfigProperty(propertyName = "dir", propertyValue = ".") })
 public class FSWatcherMDB implements FSWatcher {
 
 	@Inject
@@ -253,23 +253,23 @@ public class FSWatcherMDB implements FSWatcher {
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="prettyprint java language-java"><code>@RunWith(Arquillian.class)
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">@RunWith(Arquillian.class)
 public class ResourceAdapterTest {
 
 	@Deployment
 	public static EnterpriseArchive deploy() throws Exception {...}
 
-	private static CyclicBarrier barrier; <b>(1)</b>
+	private static CyclicBarrier barrier; <b class="conum">(1)</b>
 
-	private static File newFile;          <b>(1)</b>
+	private static File newFile;          <b class="conum">(1)</b>
 
-	private static int mode;              <b>(1)</b>
+	private static int mode;              <b class="conum">(1)</b>
 
 	@Before
 	public void init() throws Exception {
 		newFile = null;
 		mode = 0;
-		barrier = new CyclicBarrier(2);  <b>(2)</b>
+		barrier = new CyclicBarrier(2);  <b class="conum">(2)</b>
 	}
 
 	@Test
@@ -303,7 +303,7 @@ public class ResourceAdapterTest {
 <p>These members are static because the CDI event will be delivered to another instance of the test class created by the CDI runtime.</p>
 </li>
 <li>
-<p>Declares a barrier for 2 parties, that means <code>barrier.await()</code> finished as soon as 2 threads call that method or the given timeout elapsed.</p>
+<p>Declares a barrier for 2 parties, that means barrier.await() finished as soon as 2 threads call that method or the given timeout elapsed.</p>
 </li>
 </ol>
 </div>
@@ -313,7 +313,7 @@ public class ResourceAdapterTest {
 <h2 id="_i_want_to_try_that">I want to try that</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>You can find this example at <a href="https://github.com/robertpanzer/filesystemwatch-connector">https://github.com/robertpanzer/filesystemwatch-connector</a>.</p>
+<p>You can find this example at <a href="https://github.com/robertpanzer/filesystemwatch-connector" class="bare">https://github.com/robertpanzer/filesystemwatch-connector</a>.</p>
 </div>
 </div>
 </div></p>
@@ -349,7 +349,7 @@ public class ResourceAdapterTest {
     
     <div id="footer">
       <div class="container">
-        <p class="muted credit">&copy; 2013 | Mixed with <a href="http://twitter.github.com/bootstrap/">Bootstrap v2.3.1</a> | Baked with <a href="http://jbake.org">JBake v2.2.1</a></p>
+        <p class="muted credit">&copy; 2013 | Mixed with <a href="http://twitter.github.com/bootstrap/">Bootstrap v2.3.1</a> | Baked with <a href="http://jbake.org">JBake v2.3.2</a></p>
       </div>
     </div>
     

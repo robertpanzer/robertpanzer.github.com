@@ -60,9 +60,7 @@
 
 	<p><em>14 April 2014</em></p>
 
-	<p><div id="preamble">
-<div class="sectionbody">
-<div class="paragraph">
+	<p><div class="paragraph">
 <p>This post shows how to test custom resource adapters with own implementations for the connection factory, managed connection factory etc using Arquillian on TomEE embedded.</p>
 </div>
 <div class="paragraph">
@@ -72,14 +70,14 @@
 <p>Arquillian comes to the rescue by automating deployment and test execution. The next idea to accelerate this is to use an embedded TomEE as the test container, which seems to be one of the fastest application servers.</p>
 </div>
 <div class="paragraph">
-<p>While having many examples for how to define JDBC or JMS connection factories in the <code>tomee.xml</code> or in the <code>arquillian.xml</code> using system properties (<a href="http://svn.apache.org/repos/asf/tomee/tomee/tags/tomee-1.5.2/arquillian/arquillian-tomee-tests/arquillian-tomee-webprofile-tests/src/test/resources/arquillian.xml">http://svn.apache.org/repos/asf/tomee/tomee/tags/tomee-1.5.2/arquillian/arquillian-tomee-tests/arquillian-tomee-webprofile-tests/src/test/resources/arquillian.xml</a>), I did not find a description of how to define a connection factory for my own custom outbound resource adapter.</p>
+<p>While having many examples for how to define JDBC or JMS connection factories in the tomee.xml or in the arquillian.xml using system properties (<a href="http://svn.apache.org/repos/asf/tomee/tomee/tags/tomee-1.5.2/arquillian/arquillian-tomee-tests/arquillian-tomee-webprofile-tests/src/test/resources/arquillian.xml" class="bare">http://svn.apache.org/repos/asf/tomee/tomee/tags/tomee-1.5.2/arquillian/arquillian-tomee-tests/arquillian-tomee-webprofile-tests/src/test/resources/arquillian.xml</a>), I did not find a description of how to define a connection factory for my own custom outbound resource adapter.</p>
 </div>
 <div class="paragraph">
 <p>Suppose that you have a managed connection factory like this:</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="prettyprint java language-java"><code>package foo.test;
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">package foo.test;
 
 import javax.resource.spi.ManagedConnection;
 import javax.resource.spi.ManagedConnectionFactory;
@@ -99,7 +97,7 @@ public class MyManagedConnectionFactory implements ManagedConnectionFactory {
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="prettyprint java language-java"><code>@Connector(
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">@Connector(
         vendorName="FooBar",
         displayName="MyResourceAdapter",
         transactionSupport=TransactionSupportLevel.NoTransaction)
@@ -134,11 +132,11 @@ public class MyResourceAdapter implements ResourceAdapter {
 </div>
 </div>
 <div class="paragraph">
-<p>The goal is to get an <code>IMyConnectionFactory</code> injected into the test class:</p>
+<p>The goal is to get an IMyConnectionFactory injected into the test class:</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="prettyprint java language-java"><code>@RunWith(Arquillian.class)
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">@RunWith(Arquillian.class)
 public class JCATest {
 
 	@Deployment
@@ -198,11 +196,11 @@ public class JCATest {
 </div>
 </div>
 <div class="paragraph">
-<p>If you were using a <code>tomee.xml</code> you would configure the connection factory like this. The trick is to define the managed connection factory class using the attribute <code>class-name</code> instead of using the attribute <code>type</code> that is used for known resource providers, like JDBC datasources etc.</p>
+<p>If you were using a tomee.xml you would configure the connection factory like this. The trick is to define the managed connection factory class using the attribute class-name instead of using the attribute type that is used for known resource providers, like JDBC datasources etc.</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="prettyprint xml language-xml"><code>&lt;tomee&gt;
+<pre class="prettyprint highlight"><code class="language-xml" data-lang="xml">&lt;tomee&gt;
     &lt;Resource id="MyConnectionFactory"
        class-name="foo.test.MyManagedConnectionFactory"&gt;
     &lt;/Resource&gt;
@@ -210,11 +208,11 @@ public class JCATest {
 </div>
 </div>
 <div class="paragraph">
-<p>If you are testing using arquillian you can use the property definition style directly in the <code>arquillian.xml</code>.</p>
+<p>If you are testing using arquillian you can use the property definition style directly in the arquillian.xml.</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="prettyprint xml language-xml"><code>&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+<pre class="prettyprint highlight"><code class="language-xml" data-lang="xml">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
 &lt;arquillian xmlns="http://jboss.org/schema/arquillian"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:schemaLocation="http://www.jboss.org/schema/arquillian http://www.jboss.org/schema/arquillian/arquillian_1_0.xsd"&gt;
@@ -232,8 +230,6 @@ public class JCATest {
     &lt;/configuration&gt;
   &lt;/container&gt;
 &lt;/arquillian&gt;</code></pre>
-</div>
-</div>
 </div>
 </div></p>
 
@@ -268,7 +264,7 @@ public class JCATest {
     
     <div id="footer">
       <div class="container">
-        <p class="muted credit">&copy; 2013 | Mixed with <a href="http://twitter.github.com/bootstrap/">Bootstrap v2.3.1</a> | Baked with <a href="http://jbake.org">JBake v2.2.1</a></p>
+        <p class="muted credit">&copy; 2013 | Mixed with <a href="http://twitter.github.com/bootstrap/">Bootstrap v2.3.1</a> | Baked with <a href="http://jbake.org">JBake v2.3.2</a></p>
       </div>
     </div>
     

@@ -1,0 +1,262 @@
+= Thread pool configuration for inbound resource adapters on TomEE
+Robert Panzer
+2014-10-05
+:jbake-type: post
+:jbake-tags: TomEE, JCA
+:jbake-status: published
+:jbake-disqus: true
+
+Developing resource adapters is surely one of the least known parts of the JavaEE platform.
+Besides developing the component additional knowledge is required for operating the component.
+Whereas for servlets most of the customization work for an operating environment is done by configuring the WebContainer thread pool size and the resource pool sizes, this is slightly more complex for resource adapters.
+This article presents a demo application that allows to play around the properties that have to be taken care of.
+
+== The Demo application
+
+The demo application is very simple.
+You can try out this application yourself by cloning the repository https://github.com/robertpanzer/resource-adapter-configuration.git[robertpanzer/resource-adapter-configuration] from Github.
+
+It consists solely of an inbound resource adapter that invokes MDBs implementing the listener interface `ITestListener`:
+
+[source,java]
+----
+public interface ITestListener {
+
+    void process(int i);
+
+}
+----
+
+After activation of a MDB the resource adapter invokes the MDB 1000 times passing the number of iterations.
+To invoke a MDB the resource adapter has to schedule a `Work` object via the so-called `WorkManager` so that the actions are executed by managed threads and do not take down the server.
+
+[source,java]
+----
+public void endpointActivation(MessageEndpointFactory endpointFactory, ActivationSpec spec) throws ResourceException {
+    WorkManager workManager = ctx.getWorkManager();
+
+    for (int i = 0; i < iterations; i++) {
+        workManager.scheduleWork( //<1>
+            new TestWork(i, endpointFactory), //<2>
+            100, //<3>
+            null,
+            null);
+    }
+}
+----
+<1> Every logic that invokes an application component has to be processed by a managed thread.
+Therefore the work is scheduled via the `WorkManager`
+<2> The work object requires the current iteration number to pass the correct argument to the listener and the endpoint factory to get a handle to the associated MDB.
+<3> The scheduled work should not start before 100 milliseconds have passed.
+
+The WorkManager is offered by the application server and acts as an executor that uses an own thread pool.
+The `Work` object comes from the concrete resource adapter and usually invokes an `Endpoint`, i.e. the MDB:
+
+[source,java]
+----
+class TestWork implements Work {
+
+    private final int iteration; //<1>
+    private MessageEndpointFactory endpointFactory;
+
+    TestWork(int iteration, MessageEndpointFactory endpointFactory) {
+        this.iteration = iteration;
+        this.endpointFactory = endpointFactory;
+    }
+
+    @Override
+    public void release() {}
+
+    @Override
+    public void run() { //<2>
+        System.out.println("TestWork.run on thread " + Thread.currentThread());
+        try {
+            MessageEndpoint endpoint = endpointFactory.createEndpoint(null);
+            endpoint.beforeDelivery(listenerMethod);
+            listenerMethod.invoke(endpoint, iteration); //<3>
+            endpoint.afterDelivery();
+            endpoint.release();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
+----
+<1> There is one `Work` instance per iteration.
+That is one `Work` object is used for one invocation of the MDB.
+<2> The `run()` method is already executed by the thread managed by the `WorkManager`.
+The MDB is executed by the same thread.
+<3> This is the magic location that invokes the MDB represented by the `endpoint` passing the parameter `iteration`.
+
+In the demo application the MDB `TestMDB` does nothing more than counting the number of calls:
+
+[source,java]
+----
+@MessageDriven
+public class TestMDB implements ITestListener {
+
+    public static AtomicInteger numberOfCalls = new AtomicInteger();
+
+    @Override
+    public void process(int i) {
+        numberOfCalls.incrementAndGet();
+        System.out.println("Iteration = " + i);
+    }
+}
+----
+
+The demo application is executed as an https://arquillian.org[Arquillian] test.
+This test waits at most 10 seconds until all expected calls of the MDB have been executed.
+
+
+[source,java]
+----
+int expectedIterations = 1000;
+await().untilAtomic(TestMDB.numberOfCalls, is(expectedIterations));
+----
+
+This test can be executed by simply calling the http://gradle.org[Gradle] build:
+
+----
+./gradlew clean test
+----
+
+If you execute this you will likely see that this test fails!
+But why?
+
+== Thread pools vs Bean pools
+
+The test fails because not all MDB invocations pass successfully.
+The expected number of calls is 1000 and on my local machine I see around 950 invocations.
+So where do these calls get lost?
+If you analyze the output of the test you see exceptions like this:
+
+----
+javax.resource.spi.UnavailableException: Only 10 instances can be created
+    at org.apache.openejb.core.mdb.MdbInstanceFactory.createInstance(MdbInstanceFactory.java:117)
+    at org.apache.openejb.core.mdb.EndpointHandler.<init>(EndpointHandler.java:78)
+    at org.apache.openejb.core.mdb.EndpointFactory.createEndpoint(EndpointFactory.java:78)
+    at foo.bar.TestResourceAdapter$TestWork.run(TestResourceAdapter.java:110)
+    at org.apache.geronimo.connector.work.WorkerContext.run(WorkerContext.java:366)
+    at org.apache.geronimo.connector.work.pool.NamedRunnable.run(NamedRunnable.java:32)
+    at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
+    at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+    at java.lang.Thread.run(Thread.java:745)
+----
+
+Apparently someone tries to invoke the MDB even though the maximum number of beans is in use.
+Obviously the default maximum number of beans is 10.
+
+If you look at the top of the output you will see that the default thread pool size for a resource adapter is 30:
+
+----
+Okt 04, 2014 10:30:35 PM org.apache.openejb.assembler.classic.Assembler createResource
+INFORMATION: Thread pool size for 'test.rarRA' is (30)
+----
+
+And the Work objects are executed by this thread pool as you can see from the output:
+
+----
+foo.bar.RATest STANDARD_OUT
+    TestWork.run on thread Thread[test.rarRA-worker- - 6,5,main]
+----
+
+So here we have the conflict:
+30 threads are firing invocations concurrently at only 10 bean instances.
+And according to the specification the application server is allowed to refuse the call with an `UnavailableException`.
+This default configuration can lead to errors if the resource adapter does not handle these exception by retrying the invocation.
+
+At first thought this does not make any sense and makes you probably think why are these two pool sizes not identical?
+But it makes sense if you have multiple MDBs that are activated for the same resource adapter:
+If you have three MDBs that register for the same resource adapter the math works again as long as the calls are distributed equally across the MDBs.
+
+So what seems to be necessary is the possibility to configure the MDB pool size to match the number of threads.
+But from a performance point of view it is also necessary to configure the thread pool size:
+According to the expected load and the behaviour of the application different thread pool sizes are required.
+The next sections will show how to simply configure these values.
+
+== Configure the thread pool size of a resource adapter
+
+The log always shows the number of threads TomEE creates for the resource adapter:
+
+----
+Okt 04, 2014 10:30:35 PM org.apache.openejb.assembler.classic.Assembler createResource
+INFORMATION: Thread pool size for 'test.rarRA' is (30)
+----
+
+From this entry you can take the information that the _ID_ of the resource adapter is `test.rarRA`.
+To change the thread pool size you only have to define the system property `test.rarRA.threadPoolSize` to the desired value.
+
+So to make the test work you could for example reduce the thread pool size to 10 by setting the system property `-Dtest.rarRA.threadPoolSize=10`.
+
+
+== Configure the bean pool size of the MDB
+
+When you analyze the log you will find an entry that shows that the MDB is being started:
+
+----
+Okt 04, 2014 10:30:35 PM org.apache.openejb.assembler.classic.Assembler startEjbs
+INFORMATION: Created Ejb(deployment-id=TestMDB, ejb-name=TestMDB, container=test.rar)
+Okt 04, 2014 10:30:35 PM org.apache.openejb.assembler.classic.Assembler startEjbs
+INFORMATION: Started Ejb(deployment-id=TestMDB, ejb-name=TestMDB, container=test.rar)
+----
+
+So the _ID_ of the MDB is `TestMDB` and you define the bean pool size by setting the system property `TestMDB.InstanceLimit` to the desired limit.
+
+To make the test work without changing the thread pool size you could also increase the number of MDB instances to 30 by setting the system property `-DTestMDB.InstanceLimit=30`.
+
+== Try it out!
+
+To try these statements I built the `build.gradle` file so that you can pass these system properties as project properties to the build.
+To test with a thread pool size of 20 and a bean pool size of 20 start the following command:
+
+----
+./gradlew clean test -Ptest.rarRA.threadPoolSize=20 -PTestMDB.InstanceLimit=20
+----
+
+The test should succeed now!
+
+You can play with different values to see how the behaviour changes.
+
+If you want to define the system properties when starting a real TomEE you can for example simply set the environment variable `CATALINA_OPTS`:
+
+----
+CATALINA_OPTS=-Dtest.rarRA.threadPoolSize=20 -DTestMDB.InstanceLimit=20
+----
+
+== Even more configuration
+
+Regarding the resource adapter you cannot only configure the thread pool size via system properties but you can configure other properties as well.
+Just use the _ID_ of the resource adapter as the prefix.
+In the example the number of iterations can be configured via the property `iterations`:
+
+[source,java]
+----
+@Connector
+public class TestResourceAdapter implements ResourceAdapter {
+
+    private int iterations = 1000;
+
+    public int getIterations() {
+        return iterations;
+    }
+
+    public void setIterations(int iterations) {
+        System.out.println("iterations = " + iterations);
+        this.iterations = iterations;
+    }
+
+}
+----
+
+To change the number of iterations to 500 simply define the system property `test.rarRA.iterations` to 500:
+
+----
+./gradlew clean test -Ptest.rarRA.iterations=500
+----
+
+or
+
+----
+CATALINA_OPTS=-Dtest.rarRA.iterations=500
+----

@@ -1,0 +1,297 @@
+title= Create JRuby classes and methods at runtime
+date=2014-12-28
+type=post
+tags=JRuby
+status=published
+disqus=true
+~~~~~~
+= Create JRuby classes and methods at runtime
+Robert Panzer
+2014-12-28
+
+JRuby brings Ruby to the Java platform. 
+It does a great job at seamless integration between Ruby and Java code by directly mapping Ruby to Java and back again. 
+Nevertheless there may be cases where a more customized behavior is desired. 
+This post presents 
+
+- <<ImplementRubyMethodsInJava,how to add new methods to existing ruby classes at runtime from Java>> and 
+- <<ImplementRubyClassInJava,how to even create pure Ruby classes from Java that are backed by a Java class but look like native Ruby classes.>>
+
+== Motivation
+
+JRuby makes Java classes directly accessible from Ruby code.
+The following example shows how to invoke `java.lang.System.getProperties()` from JRuby.
+
+[source,java]
+----
+package foo.bar;
+
+import org.jruby.embed.ScriptingContainer;
+
+import java.util.Properties;
+
+public class HelloJRuby {
+
+    public static void main(String[] args) {
+        ScriptingContainer container = new ScriptingContainer(); // <1>
+        String props = (String) container.runScriptlet(
+            "java.lang.System.getProperties.map {|k,v| %(#{k}=#{v.inspect}) } * '\n'"); // <2>
+        System.out.println(props);
+    }
+}
+----
+<1> First the JRuby runtime has to be initialized
+<2> The method `System.getProperties()` can be invoked directly as a Ruby script.
+    The resulting properties are then transformed to a string using Rubys `map` method and string multiplication.
+
+The output of this program will look similar to this:
+
+----
+java.runtime.name="Java(TM) SE Runtime Environment"
+sun.boot.library.path="/Library/Java/JavaVirtualMachines/jdk1.8.0_20.jdk/Contents/Home/jre/lib"
+java.vm.version="25.20-b23"
+gopherProxySet="false"
+java.vm.vendor="Oracle Corporation"
+...
+----
+
+We can even dig deeper towards Ruby from the Java side, if we get a `org.jruby.Ruby` instance and use `evalScriptlet` to execute Ruby scripts.
+Then we get in touch with JRuby proxy objects that represent objects as they are used by JRuby.
+The following example shows the same program as above except that it goes one level deeper.
+
+[source,java]
+----
+package foo.bar;
+
+import org.jruby.Ruby;
+import org.jruby.embed.ScriptingContainer;
+import org.jruby.javasupport.JavaEmbedUtils;
+import org.jruby.runtime.builtin.IRubyObject;
+
+public class HelloJRuby2 {
+
+    public static void main(String[] args) {
+        ScriptingContainer container = new ScriptingContainer();
+        Ruby ruby = container.getProvider().getRuntime(); // <1>
+        IRubyObject o = ruby.evalScriptlet("java.lang.System.getProperties.map {|k,v| %(#{k}=#{v.inspect}) } * '\n'"); // <2>
+        String props = (String) JavaEmbedUtils.rubyToJava(ruby, o, String.class); // <3>
+        System.out.println(props);
+    }
+}
+----
+<1> Instead of executing our script directly at the `ScriptingContainer` we obtain a `Ruby` instance to execute the script via its `evalScriptlet()` method.
+<2> The method `evalScriptlet()` returns an `IRubyObject`.
+    This object may represent any Ruby object, even if there is no Java counterpart for it.
+<3> To convert the Ruby proxy object to the `java.lang.String` that we expect we have to use the method `JavaEmbedUtils.rubyToJava()`.
+    It is a facade to the type conversion between Ruby and Java.
+
+You can also find a great introduction about JRuby and its integration with Java at http://zeroturnaround.com/rebellabs/why-you-should-tap-into-the-power-of-ruby-from-the-comfort-of-the-jvm/
+
+In the example every class is either Ruby or Java and JRuby does a great job at allowing to use a Ruby class from Java and vice versa. 
+But it would be nice to even reopen a Ruby class and add new methods that are implemented in Java.
+
+Additionally there is always a 1:1 mapping between a Java class and its JRuby name and vice versa.
+For some scenarios it might be favorable to have only one class implemented in Java that is accessible in Ruby using different names and different parameters per name.
+
+Both requirements can be fulfilled with JRuby!
+The following sections 
+
+- first demo how to add methods implemented in Java to existing Ruby classes. 
+- Afterwards a way is shown how to implement a class in Java at runtime that is accessible under multiple names where each Ruby class has different properties.
+
+[[ImplementRubyMethodsInJava]]
+== Implement Ruby methods in Java
+
+This section shows how to take an existing Ruby class, e.g. `String`, and add a new method `acronym` that is implemented in Java and replaces some names by their acronyms.
+That is it will replace the string `Extensible Markup Language` by `XML` and `Yet Another Markup Language` by `YAML`.
+
+First it is necessary to have a Java class that contains the desired method.
+The method signature must be defined according to https://github.com/jruby/jruby/wiki/JRubyMethod_Signatures.
+This class has itself nothing to do with neither the Ruby class `String` nor `java.lang.String`.
+
+[source,java]
+----
+public class AdditionalRubyStringMethods {
+
+    private static final Map<String, String> ACRONYM_DATABASE = new HashMap<String, String>();
+
+    static {
+        ACRONYM_DATABASE.put("Yet Another Markup Language", "YAML");
+        ACRONYM_DATABASE.put("Extensible Markup Language", "XML");
+    }
+
+    @JRubyMethod(name = "acronym", required = 0) // <1>
+    public static IRubyObject replaceAcronyms(ThreadContext context, IRubyObject self) { // <2>
+        String s = (String) JavaEmbedUtils.rubyToJava(context.getRuntime(), self, String.class); // <3>
+        for (Map.Entry<String, String> entry: ACRONYM_DATABASE.entrySet()) {
+            s = s.replaceAll(entry.getKey(), entry.getValue());
+        }
+        return JavaEmbedUtils.javaToRuby(context.getRuntime(), s); // <4>
+    }
+}
+----
+<1> A Java method that should be mapped to a Ruby method must be annotated with `@JRubyMethod`.
+    The property `name` defines the name of the method as it is to be invoked in Ruby.
+    The value of the `required` property indicates that the method takes no required property.
+<2> The method may have an arbitrary method name in Java. 
+    The argument list contains the JRuby `ThreadContext` to get access to the Ruby runtime and the reference to the object that receives the message.
+    As the method takes no parameters there are no other arguments to this method.
+<3> The object that receives this method call is converted from the JRuby proxy object to a `java.lang.String`.
+<4> After the replacements the result is converted back to its Ruby counterpart and returned.
+
+Now this method can be added to the Ruby class `String` and it can be invoked:
+
+[source,java]
+----
+RubyClass rubyClass = rubyRuntime.getClass("String"); //<1>
+
+rubyClass.defineAnnotatedMethods(AdditionalRubyStringMethods.class); //<2>
+
+IRubyObject o = rubyRuntime.evalScriptlet(
+        "'Extensible Markup Language and Yet Another Markup Language are two different beasts'.acronym"); // <3>
+assertThat(
+    (String) JavaEmbedUtils.rubyToJava(rubyRuntime, o, String.class), 
+    is("XML and YAML are two different beasts"));
+----
+<1> Get a handle for the Ruby class `String`.
+<2> Add all methods annotated with `@JRubyMethod` that are defined on `AdditionalRubyStringMethods` to that class.
+<3> Invoke the new method in a Ruby script.
+
+[[ImplementRubyClassInJava]]
+== Implementing multiple Ruby classes backed by the same Java class
+
+This section shows how to define multiple classes in Ruby that are all implemented and backed by only one class in Java.
+Depending on the Ruby class that is being instantiated the Java class is instantiated with different properties.
+
+The following example builds a class in Java that has one method `getCurrentTime()` that formats the current time using a `java.util.DateFormat` using either the `SHORT`, `MEDIUM`, `LONG` or `FULL` style.
+A parameter passed to the constructor decides what format to use.
+In Ruby there should be one class name per style, i.e. there should be classes `ShortTime`, `MediumTime`, `LongTime` and `FullTime` and the method `current_time` of each class returns the respective string.
+
+First the Java class that backs the Ruby classes has to be implemented.
+It extends RubyObject and gets the style constant passed to its constructor, i.e. `DateFormat.SHORT`, `DateFormat.MEDIUM`, ...
+
+[source,java]
+----
+public class TimeFormatter extends RubyObject { //<1>
+
+    private final DateFormat timeFormat;
+
+    public TimeFormatter(Ruby runtime, RubyClass metaClass, int format) {
+        super(runtime, metaClass); 
+        this.timeFormat = DateFormat.getTimeInstance(format, Locale.ENGLISH);
+    }
+
+    @JRubyMethod(name = "current_time")
+    public IRubyObject getCurrentTime() { // <2>
+        String s = timeFormat.format(new Date());
+        return JavaEmbedUtils.javaToRuby(getRuntime(), s);
+    }
+}
+----
+<1> Every Java class that directly backs a Ruby class must implement `IRubyObject`.
+    The class `RubyObject` already implements all required infrastructure methods.
+<2> The argument list can be empty.
+    We don't need a `ThreadContext`.
+    The method can be non-static so that we don't need a `self` parameter in the argument list because `this` is the instance that backs the Ruby object.
+
+Now comes the final step.
+For each time style a `RubyClass` is created with an appropriate name.
+When creating a new Ruby class using the JRuby API a name, a super class and an `ObjectAllocator` that creates backing instances must be given.
+The `ObjectAllocator` is the link that creates new `TimeFormatter` instances parameterized with the correct style constant.
+
+[source,java]
+----
+RubyModule module = rubyRuntime.getOrCreateModule("TestModule");
+
+for (String format: Arrays.asList("Short", "Medium", "Long", "Full")) {
+    final int formatConstant = DateFormat.class.getField(format.toUpperCase()).getInt(null); // <1>
+    RubyClass rubyClass = module.defineClassUnder(
+            format + "Time",                        // <2>
+            rubyRuntime.getObject(),                // <3>
+            new ObjectAllocator() {                 // <4>
+                @Override
+                public IRubyObject allocate(Ruby ruby, RubyClass rubyClass) { // <5>
+                    return new TimeFormatter(ruby, rubyClass, formatConstant);
+                }
+            });
+    rubyClass.defineAnnotatedMethods(TimeFormatter.class);
+}
+
+rubyRuntime.evalScriptlet("puts TestModule::ShortTime.new.current_time"); //<6>
+rubyRuntime.evalScriptlet("puts TestModule::MediumTime.new.current_time");
+rubyRuntime.evalScriptlet("puts TestModule::LongTime.new.current_time");
+rubyRuntime.evalScriptlet("puts TestModule::FullTime.new.current_time");
+----
+<1> Get the style constant from `java.util.DateFormat` using reflection, i.e. `DateFormat.SHORT`, `DateFormat.MEDIUM`, etc.
+<2> The name of the new classes should be `ShortTime`, `MediumTime`, `LongTime` and `FullTime`.
+<3> The Ruby super class for each new class should be Rubys `Object` class.
+<4> Each `ObjectAllocator` instance for each Ruby class creates new instances of the Java `TimeFormatter` class passing the respective style constant.
+<5> The `allocate` method is calledby JRuby every time a new instance of the Ruby class is created.
+    That is JRuby delegates instantiation of the Java class that backs the Ruby class to this method.
+<6> Finally instantiate each class in Ruby and invoke the same method for every class showing a different behavior every time.
+
+The output of the code above is:
+
+----
+7:22 PM
+7:22:33 PM
+7:22:33 PM CET
+7:22:33 PM CET
+----
+
+Another advantage of using this approach versus implicitely mapping Java class to Ruby classes is that you have a very fine grained control of the methods that are visible in the Ruby world.
+Otherwise even the methods defined on `java.lang.Object` are available to Ruby code.
+
+== Practical application
+
+One real world scenario where all this is used is the http://asciidoctor.org[Asciidoctor] project and its Java wrapper http://github.com/asciidoctor/asciidoctorj[AsciidoctorJ].
+http://asciidoctor.org[Asciidoctor] allows to implement converters for any output format simply by implementing a few methods in Ruby.
+
+To register a converter it would be sufficient to pass the Java class implementing these methods to the Asciidoctor converter factory:
+
+[source,ruby]
+----
+Asciidoctor::Converter::Factory::register foo.bar.MyJavaPostscriptConverter 'ps'
+Asciidoctor::Converter::Factory::register foo.bar.MyJavaPDFConverter 'pdf'
+----
+
+A converter in Java must implement at least the following method `convert`.
+Remember that thanks to duck typing no interfaces are necessary, it is really sufficient to implement this one method.
+As Asciidoctor has an own abstraction defined in Ruby for the abstract syntax tree that is passed to the converter we can make no assumptions about the type of the first parameter `node`.
+
+[source,java]
+----
+Object convert(Object node, String transform, Map<Object, Object> opts);
+----
+
+AsciidoctorJ has implemented an own type hierarchy in Java that mirrors the type hierarchy in Ruby.
+As Asciidoctor directly instantiates the converter class itself and invokes the `convert` method there is no way to manually convert the objects and JRubys `JavaEmbedUtils.rubyToJava()` has no clue about this relationship.
+
+This problem can be solved by introducing a proxy for the converter.
+Every converter defined in Java gets its own proxy class in Ruby.
+Every proxy class in Ruby is backed by the same Java class,
+The respective `ObjectAllocator` is the link between the proxy class that is registered at Asciidoctor and the converter class implemented in Java.
+
+[source,java]
+----
+public void register(final Class<? extends Converter> converterClass, String... backends) {
+    RubyModule module = rubyRuntime.defineModule(getModuleName(converterClass)); // <1>
+    RubyClass clazz = module.defineClassUnder(
+            converterClass.getSimpleName(), // <2>
+            rubyRuntime.getObject(), // <3>
+            new ConverterProxy.Allocator(converterClass)); // <4>
+    clazz.defineAnnotatedMethods(ConverterProxy.class); // <5>
+
+    this.asciidoctorModule.register_converter(clazz, backends); // <6>
+}
+----
+<1> We create one Ruby module per converter.
+<2> The name of the proxy class in Ruby should be the simple class name of the Java converter class.
+    Thanks to the different module name there will be no name clashes.
+<3> The proxy class extends Rubys `Object` class.
+    Therefore no Java methods "pollute" the instance methods of the proxy class.
+<4> Every proxy class gets its own `ObjectAllocator` that knows which converter it has to proxy.
+<5> Add the proxy methods that do the type conversion from Asciidoctor Ruby to AsciidoctorJ and forward the calls to the Java converter implementations.
+<6> Finally register the proxy class at Asciidoctor.
+
+

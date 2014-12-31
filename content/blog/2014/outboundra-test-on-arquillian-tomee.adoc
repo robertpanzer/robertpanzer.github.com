@@ -1,15 +1,13 @@
-title=Testing outbound resource adapters with Arquillian on an embedded TomEE
-date=2014-04-14
-type=post
-tags=TomEE, JCA, Arquillian, JavaEE
-status=published
-disqus=true
-~~~~~~
 = Testing outbound resource adapters with Arquillian on an embedded TomEE
 Robert Panzer
 2014-04-14
+:jbake-type: post
+:jbake-tags: TomEE, JCA, Arquillian, JavaEE
+:jbake-status: published
+:jbake-disqus: true
+:preamble: This post shows how to test custom resource adapters with own implementations for the connection factory, managed connection factory etc using Arquillian on TomEE embedded.
 
-This post shows how to test custom resource adapters with own implementations for the connection factory, managed connection factory etc using Arquillian on TomEE embedded.
+{preamble}
 
 When developing a new custom resource adapter that have their own connections, managed connections, connection factories and managed connection factories you have a lot of code-compile-test loops because you have to do a lot of boiler plate code. The more often you repeat this the more likely you wish to accelerate this.
 

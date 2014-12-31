@@ -5,11 +5,9 @@ Robert Panzer
 :jbake-tags: JRuby, Asciidoctor
 :jbake-status: published
 :jbake-disqus: true
+:preamble: JRuby brings Ruby to the Java platform. It does a great job at seamless integration between Ruby and Java code by directly mapping Ruby to Java and back again. Nevertheless there may be cases where a more customized behavior is desired. This post presents some ways for a deeper integration.
 
-JRuby brings Ruby to the Java platform. 
-It does a great job at seamless integration between Ruby and Java code by directly mapping Ruby to Java and back again. 
-Nevertheless there may be cases where a more customized behavior is desired. 
-This post presents 
+JRuby brings Ruby to the Java platform. It does a great job at seamless integration between Ruby and Java code by directly mapping Ruby to Java and back again. Nevertheless there may be cases where a more customized behavior is desired. This post presents 
 
 - <<ImplementRubyMethodsInJava,how to add new methods to existing ruby classes at runtime from Java>> and 
 - <<ImplementRubyClassInJava,how to even create pure Ruby classes from Java that are backed by a Java class but look like native Ruby classes.>>

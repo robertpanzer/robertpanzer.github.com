@@ -1,15 +1,13 @@
-title= JavaEE 7 style inbound resource adapters on TomEE
-date=2014-04-06
-type=post
-tags=TomEE, JCA, Wildfly, JavaEE
-status=published
-disqus=true
-~~~~~~
 = Inbound resource adapters and Java EE 7 style empty interface MDBs on TomEE & Wildfly
 Robert Panzer
 2014-04-05
+:jbake-type: post
+:jbake-tags: TomEE, JCA, Wildfly, JavaEE
+:jbake-status: published
+:jbake-disqus: true
+:preamble: Java EE 7 brings some not so obvious additions. One of them is in particular interesting for resource adapter developers. This posting shows what this is about, how to run it on Wildfly and on TomEE, and how to test it.
 
-Java EE 7 brings some not so obvious additions. One of them is in particular interesting for resource adapter developers. This posting shows what this is about, how to run it on Wildfly and on TomEE, and how to test it.
+{preamble}
 
 Even though it seems that all new features of Java EE 7 are around HTML5 including WebSockets, ManagedExecutors and Batch there are also some other more subtle additions that are worth trying out. One very interesting point for developers of resource adapters that went into EJB 3.2 and JCA 1.7 is the addition of message driven beans with no-method listener interfaces. Thanks go to David Blevins of Tomitribe for pointing me on that. Instead of having predefined methods on an interface Java EE 7 allows to reflect the MDB class and therefore invoke any public method of that.
 

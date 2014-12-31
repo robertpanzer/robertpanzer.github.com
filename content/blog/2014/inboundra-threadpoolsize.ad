@@ -5,11 +5,9 @@ Robert Panzer
 :jbake-tags: TomEE, JCA
 :jbake-status: published
 :jbake-disqus: true
+:preamble: Developing resource adapters is surely one of the least known parts of the JavaEE platform. Besides developing the component additional knowledge is required for operating the component. Whereas for servlets most of the customization work for an operating environment is done by configuring the WebContainer thread pool size and the resource pool sizes, this is slightly more complex for resource adapters. This article presents a demo application that allows to play around the properties that have to be taken care of.
 
-Developing resource adapters is surely one of the least known parts of the JavaEE platform.
-Besides developing the component additional knowledge is required for operating the component.
-Whereas for servlets most of the customization work for an operating environment is done by configuring the WebContainer thread pool size and the resource pool sizes, this is slightly more complex for resource adapters.
-This article presents a demo application that allows to play around the properties that have to be taken care of.
+{preamble}
 
 == The Demo application
 

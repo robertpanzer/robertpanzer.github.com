@@ -22,7 +22,10 @@
     <![endif]-->
 
     <script type="text/javascript" src="https://apis.google.com/js/plusone.js"></script>
-    
+    <script src="https://apis.google.com/js/platform.js" async defer>
+      {lang: 'de'}
+    </script>
+
     <script src="//platform.linkedin.com/in.js" type="text/javascript">
         lang: en_US
     </script>

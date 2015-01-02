@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8"/>
-    <title> JavaEE 7 style inbound resource adapters on TomEE</title>
+    <title>Inbound resource adapters and Java EE 7 style empty interface MDBs on TomEE &amp; Wildfly</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="">
     <meta name="author" content="">
@@ -21,6 +21,15 @@
       <script src="/js/html5shiv.js"></script>
     <![endif]-->
 
+    <script type="text/javascript" src="https://apis.google.com/js/plusone.js"></script>
+    <script src="https://apis.google.com/js/platform.js" async defer>
+      {lang: 'de'}
+    </script>
+
+    <script src="//platform.linkedin.com/in.js" type="text/javascript">
+        lang: en_US
+    </script>
+
     <!-- Fav and touch icons -->
     <!--<link rel="apple-touch-icon-precomposed" sizes="144x144" href="../assets/ico/apple-touch-icon-144-precomposed.png">
     <link rel="apple-touch-icon-precomposed" sizes="114x114" href="../assets/ico/apple-touch-icon-114-precomposed.png">
@@ -30,7 +39,16 @@
 
   </head>
   <body>
-    <div id="wrap">
+    <div id="fb-root"></div>
+    <script>(function(d, s, id) {
+      var js, fjs = d.getElementsByTagName(s)[0];
+      if (d.getElementById(id)) return;
+      js = d.createElement(s); js.id = id;
+      js.src = "//connect.facebook.net/de_DE/sdk.js#xfbml=1&version=v2.0";
+      fjs.parentNode.insertBefore(js, fjs);
+    }(document, 'script', 'facebook-jssdk'));</script>
+
+        <div id="wrap">
 	
 	<!-- Fixed navbar -->
       <div class="navbar navbar-fixed-top">
@@ -55,10 +73,19 @@
       <div class="container">
 	
 	<div class="page-header">
-		<h1> JavaEE 7 style inbound resource adapters on TomEE</h1>
+		<h1>Inbound resource adapters and Java EE 7 style empty interface MDBs on TomEE &amp; Wildfly</h1>
 	</div>
 
-	<p><em>06 April 2014</em></p>
+	<p><em>05 April 2014</em></p>
+
+<a href="https://twitter.com/share" class="twitter-share-button" data-url="https://robertpanzer.github.io/blog/2014/inboundra-nointfmdbs.html">Tweet</a> <script>!function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0],p=/^http:/.test(d.location)?'http':'https';if(!d.getElementById(id)){js=d.createElement(s);js.id=id;js.src=p+'://platform.twitter.com/widgets.js';fjs.parentNode.insertBefore(js,fjs);}}(document, 'script', 'twitter-wjs');</script>
+
+<g:plusone href="https://robertpanzer.github.io/blog/2014/inboundra-nointfmdbs.html"></g:plusone>
+
+<script type="IN/Share" data-url="https://robertpanzer.github.io/blog/2014/inboundra-nointfmdbs.html" data-counter="right"></script>
+
+<div class="fb-like" data-href="https://robertpanzer.github.io/blog/2014/inboundra-nointfmdbs.html" data-layout="button_count" data-action="like" data-show-faces="true" data-share="true"></div>
+
 
 	<p><div id="preamble">
 <div class="sectionbody">

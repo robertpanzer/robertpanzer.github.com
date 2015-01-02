@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"/>
+    <title>Create JRuby classes and methods at runtime</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <meta name="keywords" content="">
+    <meta name="generator" content"JBake">
+
+    <!-- Le styles -->
+    <link href="/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/css/asciidoctor.css" rel="stylesheet">
+    <link href="/css/base.css" rel="stylesheet">
+    <link href="/css/bootstrap-responsive.min.css" rel="stylesheet">
+    <link href="/css/disqus.css" rel="stylesheet">
+
+    <!-- HTML5 shim, for IE6-8 support of HTML5 elements -->
+    <!--[if lt IE 9]>
+      <script src="/js/html5shiv.js"></script>
+    <![endif]-->
+
+    <script type="text/javascript" src="https://apis.google.com/js/plusone.js"></script>
+    <script src="https://apis.google.com/js/platform.js" async defer>
+      {lang: 'de'}
+    </script>
+
+    <script src="//platform.linkedin.com/in.js" type="text/javascript">
+        lang: en_US
+    </script>
+
+    <!-- Fav and touch icons -->
+    <!--<link rel="apple-touch-icon-precomposed" sizes="144x144" href="../assets/ico/apple-touch-icon-144-precomposed.png">
+    <link rel="apple-touch-icon-precomposed" sizes="114x114" href="../assets/ico/apple-touch-icon-114-precomposed.png">
+    <link rel="apple-touch-icon-precomposed" sizes="72x72" href="../assets/ico/apple-touch-icon-72-precomposed.png">
+    <link rel="apple-touch-icon-precomposed" href="../assets/ico/apple-touch-icon-57-precomposed.png">-->
+    <link rel="shortcut icon" href="favicon.ico">
+
+  </head>
+  <body>
+    <div id="fb-root"></div>
+    <script>(function(d, s, id) {
+      var js, fjs = d.getElementsByTagName(s)[0];
+      if (d.getElementById(id)) return;
+      js = d.createElement(s); js.id = id;
+      js.src = "//connect.facebook.net/de_DE/sdk.js#xfbml=1&version=v2.0";
+      fjs.parentNode.insertBefore(js, fjs);
+    }(document, 'script', 'facebook-jssdk'));</script>
+
+        <div id="wrap">
+	
+	<!-- Fixed navbar -->
+      <div class="navbar navbar-fixed-top">
+        <div class="navbar-inner">
+          <div class="container">
+            <button type="button" class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+              <span class="icon-bar"></span>
+              <span class="icon-bar"></span>
+              <span class="icon-bar"></span>
+            </button>
+            <a class="brand" href="/">Robert Panzers blog</a>
+            <div class="nav-collapse collapse">
+              <ul class="nav">
+                <li><a href="/index.html">Blog</a></li>
+                <li><a href="/hubtogo/index.html">Hub to go</a></li>
+                <li><a href="/about.html">About</a></li>
+              </ul>
+            </div><!--/.nav-collapse -->
+          </div>
+        </div>
+      </div>
+      <div class="container">
+	
+	<div class="page-header">
+		<h1>Create JRuby classes and methods at runtime</h1>
+	</div>
+
+	<p><em>30 Dezember 2014</em></p>
+
+<a href="https://twitter.com/share" class="twitter-share-button" data-url="https://robertpanzer.github.io/blog/2014/jrubydynamics.html">Tweet</a> <script>!function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0],p=/^http:/.test(d.location)?'http':'https';if(!d.getElementById(id)){js=d.createElement(s);js.id=id;js.src=p+'://platform.twitter.com/widgets.js';fjs.parentNode.insertBefore(js,fjs);}}(document, 'script', 'twitter-wjs');</script>
+
+<g:plusone href="https://robertpanzer.github.io/blog/2014/jrubydynamics.html"></g:plusone>
+
+<script type="IN/Share" data-url="https://robertpanzer.github.io/blog/2014/jrubydynamics.html" data-counter="right"></script>
+
+<div class="fb-like" data-href="https://robertpanzer.github.io/blog/2014/jrubydynamics.html" data-layout="button_count" data-action="like" data-show-faces="true" data-share="true"></div>
+
+
+	<p><div id="preamble">
+<div class="sectionbody">
+<div class="paragraph">
+<p>JRuby brings Ruby to the Java platform. It does a great job at seamless integration between Ruby and Java code by directly mapping Ruby to Java and back again. Nevertheless there may be cases where a more customized behavior is desired. This post presents</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><a href="#ImplementRubyMethodsInJava">how to add new methods to existing ruby classes at runtime from Java</a> and</p>
+</li>
+<li>
+<p><a href="#ImplementRubyClassInJava">how to even create pure Ruby classes from Java that are backed by a Java class but look like native Ruby classes.</a></p>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_motivation">Motivation</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>JRuby makes Java classes directly accessible from Ruby code.
+The following example shows how to invoke <code>java.lang.System.getProperties()</code> from JRuby.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">package foo.bar;
+
+import org.jruby.embed.ScriptingContainer;
+
+import java.util.Properties;
+
+public class HelloJRuby {
+
+    public static void main(String[] args) {
+        ScriptingContainer container = new ScriptingContainer(); <b class="conum">(1)</b>
+        String props = (String) container.runScriptlet(
+            "java.lang.System.getProperties.map {|k,v| %(#{k}=#{v.inspect}) } * '\n'"); <b class="conum">(2)</b>
+        System.out.println(props);
+    }
+}</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<ol>
+<li>
+<p>First the JRuby runtime has to be initialized</p>
+</li>
+<li>
+<p>The method <code>System.getProperties()</code> can be invoked directly as a Ruby script.
+The resulting properties are then transformed to a string using Rubys <code>map</code> method and string multiplication.</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>The output of this program will look similar to this:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>java.runtime.name="Java(TM) SE Runtime Environment"
+sun.boot.library.path="/Library/Java/JavaVirtualMachines/jdk1.8.0_20.jdk/Contents/Home/jre/lib"
+java.vm.version="25.20-b23"
+gopherProxySet="false"
+java.vm.vendor="Oracle Corporation"
+...</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>We can even dig deeper towards Ruby from the Java side, if we get a <code>org.jruby.Ruby</code> instance and use <code>evalScriptlet</code> to execute Ruby scripts.
+Then we get in touch with JRuby proxy objects that represent objects as they are used by JRuby.
+The following example shows the same program as above except that it goes one level deeper.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">package foo.bar;
+
+import org.jruby.Ruby;
+import org.jruby.embed.ScriptingContainer;
+import org.jruby.javasupport.JavaEmbedUtils;
+import org.jruby.runtime.builtin.IRubyObject;
+
+public class HelloJRuby2 {
+
+    public static void main(String[] args) {
+        ScriptingContainer container = new ScriptingContainer();
+        Ruby ruby = container.getProvider().getRuntime(); <b class="conum">(1)</b>
+        IRubyObject o = ruby.evalScriptlet("java.lang.System.getProperties.map {|k,v| %(#{k}=#{v.inspect}) } * '\n'"); <b class="conum">(2)</b>
+        String props = (String) JavaEmbedUtils.rubyToJava(ruby, o, String.class); <b class="conum">(3)</b>
+        System.out.println(props);
+    }
+}</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<ol>
+<li>
+<p>Instead of executing our script directly at the <code>ScriptingContainer</code> we obtain a <code>Ruby</code> instance to execute the script via its <code>evalScriptlet()</code> method.</p>
+</li>
+<li>
+<p>The method <code>evalScriptlet()</code> returns an <code>IRubyObject</code>.
+This object may represent any Ruby object, even if there is no Java counterpart for it.</p>
+</li>
+<li>
+<p>To convert the Ruby proxy object to the <code>java.lang.String</code> that we expect we have to use the method <code>JavaEmbedUtils.rubyToJava()</code>.
+It is a facade to the type conversion between Ruby and Java.</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>You can also find a great introduction about JRuby and its integration with Java at <a href="http://zeroturnaround.com/rebellabs/why-you-should-tap-into-the-power-of-ruby-from-the-comfort-of-the-jvm/" class="bare">http://zeroturnaround.com/rebellabs/why-you-should-tap-into-the-power-of-ruby-from-the-comfort-of-the-jvm/</a></p>
+</div>
+<div class="paragraph">
+<p>In the example every class is either Ruby or Java and JRuby does a great job at allowing to use a Ruby class from Java and vice versa.
+But it would be nice to even reopen a Ruby class and add new methods that are implemented in Java.</p>
+</div>
+<div class="paragraph">
+<p>Additionally there is always a 1:1 mapping between a Java class and its JRuby name and vice versa.
+For some scenarios it might be favorable to have only one class implemented in Java that is accessible in Ruby using different names and different parameters per name.</p>
+</div>
+<div class="paragraph">
+<p>Both requirements can be fulfilled with JRuby!
+The following sections</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>first demo how to add methods implemented in Java to existing Ruby classes.</p>
+</li>
+<li>
+<p>Afterwards a way is shown how to implement a class in Java at runtime that is accessible under multiple names where each Ruby class has different properties.</p>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="ImplementRubyMethodsInJava">Implement Ruby methods in Java</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>This section shows how to take an existing Ruby class, e.g. <code>String</code>, and add a new method <code>acronym</code> that is implemented in Java and replaces some names by their acronyms.
+That is it will replace the string <code>Extensible Markup Language</code> by <code>XML</code> and <code>Yet Another Markup Language</code> by <code>YAML</code>.</p>
+</div>
+<div class="paragraph">
+<p>First it is necessary to have a Java class that contains the desired method.
+The method signature must be defined according to <a href="https://github.com/jruby/jruby/wiki/JRubyMethod_Signatures" class="bare">https://github.com/jruby/jruby/wiki/JRubyMethod_Signatures</a>.
+This class has itself nothing to do with neither the Ruby class <code>String</code> nor <code>java.lang.String</code>.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">public class AdditionalRubyStringMethods {
+
+    private static final Map&lt;String, String&gt; ACRONYM_DATABASE = new HashMap&lt;String, String&gt;();
+
+    static {
+        ACRONYM_DATABASE.put("Yet Another Markup Language", "YAML");
+        ACRONYM_DATABASE.put("Extensible Markup Language", "XML");
+    }
+
+    @JRubyMethod(name = "acronym", required = 0) <b class="conum">(1)</b>
+    public static IRubyObject replaceAcronyms(ThreadContext context, IRubyObject self) { <b class="conum">(2)</b>
+        String s = (String) JavaEmbedUtils.rubyToJava(context.getRuntime(), self, String.class); <b class="conum">(3)</b>
+        for (Map.Entry&lt;String, String&gt; entry: ACRONYM_DATABASE.entrySet()) {
+            s = s.replaceAll(entry.getKey(), entry.getValue());
+        }
+        return JavaEmbedUtils.javaToRuby(context.getRuntime(), s); <b class="conum">(4)</b>
+    }
+}</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<ol>
+<li>
+<p>A Java method that should be mapped to a Ruby method must be annotated with <code>@JRubyMethod</code>.
+The property <code>name</code> defines the name of the method as it is to be invoked in Ruby.
+The value of the <code>required</code> property indicates that the method takes no required property.</p>
+</li>
+<li>
+<p>The method may have an arbitrary method name in Java.
+The argument list contains the JRuby <code>ThreadContext</code> to get access to the Ruby runtime and the reference to the object that receives the message.
+As the method takes no parameters there are no other arguments to this method.</p>
+</li>
+<li>
+<p>The object that receives this method call is converted from the JRuby proxy object to a <code>java.lang.String</code>.</p>
+</li>
+<li>
+<p>After the replacements the result is converted back to its Ruby counterpart and returned.</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>Now this method can be added to the Ruby class <code>String</code> and it can be invoked:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">RubyClass rubyClass = rubyRuntime.getClass("String"); <b class="conum">(1)</b>
+
+rubyClass.defineAnnotatedMethods(AdditionalRubyStringMethods.class); <b class="conum">(2)</b>
+
+IRubyObject o = rubyRuntime.evalScriptlet(
+        "'Extensible Markup Language and Yet Another Markup Language are two different beasts'.acronym"); <b class="conum">(3)</b>
+assertThat(
+    (String) JavaEmbedUtils.rubyToJava(rubyRuntime, o, String.class),
+    is("XML and YAML are two different beasts"));</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<ol>
+<li>
+<p>Get a handle for the Ruby class <code>String</code>.</p>
+</li>
+<li>
+<p>Add all methods annotated with <code>@JRubyMethod</code> that are defined on <code>AdditionalRubyStringMethods</code> to that class.</p>
+</li>
+<li>
+<p>Invoke the new method in a Ruby script.</p>
+</li>
+</ol>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="ImplementRubyClassInJava">Implementing multiple Ruby classes backed by the same Java class</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>This section shows how to define multiple classes in Ruby that are all implemented and backed by only one class in Java.
+Depending on the Ruby class that is being instantiated the Java class is instantiated with different properties.</p>
+</div>
+<div class="paragraph">
+<p>The following example builds a class in Java that has one method <code>getCurrentTime()</code> that formats the current time using a <code>java.util.DateFormat</code> using either the <code>SHORT</code>, <code>MEDIUM</code>, <code>LONG</code> or <code>FULL</code> style.
+A parameter passed to the constructor decides what format to use.
+In Ruby there should be one class name per style, i.e. there should be classes <code>ShortTime</code>, <code>MediumTime</code>, <code>LongTime</code> and <code>FullTime</code> and the method <code>current_time</code> of each class returns the respective string.</p>
+</div>
+<div class="paragraph">
+<p>First the Java class that backs the Ruby classes has to be implemented.
+It extends RubyObject and gets the style constant passed to its constructor, i.e. <code>DateFormat.SHORT</code>, <code>DateFormat.MEDIUM</code>, &#8230;&#8203;</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">public class TimeFormatter extends RubyObject { <b class="conum">(1)</b>
+
+    private final DateFormat timeFormat;
+
+    public TimeFormatter(Ruby runtime, RubyClass metaClass, int format) {
+        super(runtime, metaClass);
+        this.timeFormat = DateFormat.getTimeInstance(format, Locale.ENGLISH);
+    }
+
+    @JRubyMethod(name = "current_time")
+    public IRubyObject getCurrentTime() { <b class="conum">(2)</b>
+        String s = timeFormat.format(new Date());
+        return JavaEmbedUtils.javaToRuby(getRuntime(), s);
+    }
+}</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<ol>
+<li>
+<p>Every Java class that directly backs a Ruby class must implement <code>IRubyObject</code>.
+The class <code>RubyObject</code> already implements all required infrastructure methods.</p>
+</li>
+<li>
+<p>The argument list can be empty.
+We don&#8217;t need a <code>ThreadContext</code>.
+The method can be non-static so that we don&#8217;t need a <code>self</code> parameter in the argument list because <code>this</code> is the instance that backs the Ruby object.</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>Now comes the final step.
+For each time style a <code>RubyClass</code> is created with an appropriate name.
+When creating a new Ruby class using the JRuby API a name, a super class and an <code>ObjectAllocator</code> that creates backing instances must be given.
+The <code>ObjectAllocator</code> is the link that creates new <code>TimeFormatter</code> instances parameterized with the correct style constant.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">RubyModule module = rubyRuntime.getOrCreateModule("TestModule");
+
+for (String format: Arrays.asList("Short", "Medium", "Long", "Full")) {
+    final int formatConstant = DateFormat.class.getField(format.toUpperCase()).getInt(null); <b class="conum">(1)</b>
+    RubyClass rubyClass = module.defineClassUnder(
+            format + "Time",                        <b class="conum">(2)</b>
+            rubyRuntime.getObject(),                <b class="conum">(3)</b>
+            new ObjectAllocator() {                 <b class="conum">(4)</b>
+                @Override
+                public IRubyObject allocate(Ruby ruby, RubyClass rubyClass) { <b class="conum">(5)</b>
+                    return new TimeFormatter(ruby, rubyClass, formatConstant);
+                }
+            });
+    rubyClass.defineAnnotatedMethods(TimeFormatter.class);
+}
+
+rubyRuntime.evalScriptlet("puts TestModule::ShortTime.new.current_time"); <b class="conum">(6)</b>
+rubyRuntime.evalScriptlet("puts TestModule::MediumTime.new.current_time");
+rubyRuntime.evalScriptlet("puts TestModule::LongTime.new.current_time");
+rubyRuntime.evalScriptlet("puts TestModule::FullTime.new.current_time");</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<ol>
+<li>
+<p>Get the style constant from <code>java.util.DateFormat</code> using reflection, i.e. <code>DateFormat.SHORT</code>, <code>DateFormat.MEDIUM</code>, etc.</p>
+</li>
+<li>
+<p>The name of the new classes should be <code>ShortTime</code>, <code>MediumTime</code>, <code>LongTime</code> and <code>FullTime</code>.</p>
+</li>
+<li>
+<p>The Ruby super class for each new class should be Rubys <code>Object</code> class.</p>
+</li>
+<li>
+<p>Each <code>ObjectAllocator</code> instance for each Ruby class creates new instances of the Java <code>TimeFormatter</code> class passing the respective style constant.</p>
+</li>
+<li>
+<p>The <code>allocate</code> method is calledby JRuby every time a new instance of the Ruby class is created.
+That is JRuby delegates instantiation of the Java class that backs the Ruby class to this method.</p>
+</li>
+<li>
+<p>Finally instantiate each class in Ruby and invoke the same method for every class showing a different behavior every time.</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>The output of the code above is:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>7:22 PM
+7:22:33 PM
+7:22:33 PM CET
+7:22:33 PM CET</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Another advantage of using this approach versus implicitely mapping Java class to Ruby classes is that you have a very fine grained control of the methods that are visible in the Ruby world.
+Otherwise even the methods defined on <code>java.lang.Object</code> are available to Ruby code.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_practical_application">Practical application</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>One real world scenario where all this is used is the <a href="http://asciidoctor.org">Asciidoctor</a> project and its Java wrapper <a href="http://github.com/asciidoctor/asciidoctorj">AsciidoctorJ</a>.
+<a href="http://asciidoctor.org">Asciidoctor</a> allows to implement converters for any output format simply by implementing a few methods in Ruby.</p>
+</div>
+<div class="paragraph">
+<p>To register a converter it would be sufficient to pass the Java class implementing these methods to the Asciidoctor converter factory:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-ruby" data-lang="ruby">Asciidoctor::Converter::Factory::register foo.bar.MyJavaPostscriptConverter 'ps'
+Asciidoctor::Converter::Factory::register foo.bar.MyJavaPDFConverter 'pdf'</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>A converter in Java must implement at least the following method <code>convert</code>.
+Remember that thanks to duck typing no interfaces are necessary, it is really sufficient to implement this one method.
+As Asciidoctor has an own abstraction defined in Ruby for the abstract syntax tree that is passed to the converter we can make no assumptions about the type of the first parameter <code>node</code>.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">Object convert(Object node, String transform, Map&lt;Object, Object&gt; opts);</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>AsciidoctorJ has implemented an own type hierarchy in Java that mirrors the type hierarchy in Ruby.
+As Asciidoctor directly instantiates the converter class itself and invokes the <code>convert</code> method there is no way to manually convert the objects and JRubys <code>JavaEmbedUtils.rubyToJava()</code> has no clue about this relationship.</p>
+</div>
+<div class="paragraph">
+<p>This problem can be solved by introducing a proxy for the converter.
+Every converter defined in Java gets its own proxy class in Ruby.
+Every proxy class in Ruby is backed by the same Java class,
+The respective <code>ObjectAllocator</code> is the link between the proxy class that is registered at Asciidoctor and the converter class implemented in Java.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">public void register(final Class&lt;? extends Converter&gt; converterClass, String... backends) {
+    RubyModule module = rubyRuntime.defineModule(getModuleName(converterClass)); <b class="conum">(1)</b>
+    RubyClass clazz = module.defineClassUnder(
+            converterClass.getSimpleName(), <b class="conum">(2)</b>
+            rubyRuntime.getObject(), <b class="conum">(3)</b>
+            new ConverterProxy.Allocator(converterClass)); <b class="conum">(4)</b>
+    clazz.defineAnnotatedMethods(ConverterProxy.class); <b class="conum">(5)</b>
+
+    this.asciidoctorModule.register_converter(clazz, backends); <b class="conum">(6)</b>
+}</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<ol>
+<li>
+<p>We create one Ruby module per converter.</p>
+</li>
+<li>
+<p>The name of the proxy class in Ruby should be the simple class name of the Java converter class.
+Thanks to the different module name there will be no name clashes.</p>
+</li>
+<li>
+<p>The proxy class extends Rubys <code>Object</code> class.
+Therefore no Java methods "pollute" the instance methods of the proxy class.</p>
+</li>
+<li>
+<p>Every proxy class gets its own <code>ObjectAllocator</code> that knows which converter it has to proxy.</p>
+</li>
+<li>
+<p>Add the proxy methods that do the type conversion from Asciidoctor Ruby to AsciidoctorJ and forward the calls to the Java converter implementations.</p>
+</li>
+<li>
+<p>Finally register the proxy class at Asciidoctor.</p>
+</li>
+</ol>
+</div>
+</div>
+</div></p>
+
+	<hr>
+	
+		</div>
+		<div id="push"></div>
+    </div>
+
+        <div id="disqus_thread"></div>
+    <script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'robertpanzersblog'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+    
+
+    <!-- Le javascript
+    ================================================== -->
+    <!-- Placed at the end of the document so the pages load faster -->
+    <script src="/js/jquery-1.9.1.min.js"></script>
+    <script src="/js/bootstrap.min.js"></script>
+    <script src="/js/run_prettify.js"></script>
+    
+    <div id="footer">
+      <div class="container">
+        <p class="muted credit">&copy; 2013 | Mixed with <a href="http://twitter.github.com/bootstrap/">Bootstrap v2.3.1</a> | Baked with <a href="http://jbake.org">JBake v2.3.2</a></p>
+      </div>
+    </div>
+    
+
+  </body>
+</html>

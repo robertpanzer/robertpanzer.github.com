@@ -21,6 +21,15 @@
       <script src="/js/html5shiv.js"></script>
     <![endif]-->
 
+    <script type="text/javascript" src="https://apis.google.com/js/plusone.js"></script>
+    <script src="https://apis.google.com/js/platform.js" async defer>
+      {lang: 'de'}
+    </script>
+
+    <script src="//platform.linkedin.com/in.js" type="text/javascript">
+        lang: en_US
+    </script>
+
     <!-- Fav and touch icons -->
     <!--<link rel="apple-touch-icon-precomposed" sizes="144x144" href="../assets/ico/apple-touch-icon-144-precomposed.png">
     <link rel="apple-touch-icon-precomposed" sizes="114x114" href="../assets/ico/apple-touch-icon-114-precomposed.png">
@@ -30,7 +39,16 @@
 
   </head>
   <body>
-    <div id="wrap">
+    <div id="fb-root"></div>
+    <script>(function(d, s, id) {
+      var js, fjs = d.getElementsByTagName(s)[0];
+      if (d.getElementById(id)) return;
+      js = d.createElement(s); js.id = id;
+      js.src = "//connect.facebook.net/de_DE/sdk.js#xfbml=1&version=v2.0";
+      fjs.parentNode.insertBefore(js, fjs);
+    }(document, 'script', 'facebook-jssdk'));</script>
+
+        <div id="wrap">
 
 	<!-- Fixed navbar -->
       <div class="navbar navbar-fixed-top">
@@ -60,13 +78,21 @@
 
 	<p><em>02 April 2014</em></p>
 
-	<p><div class="paragraph">
+	<p><div class="imageblock">
+<div class="content">
+<img src="http://www.gravatar.com/avatar/9e278b960a0c39aafdadbefe667db79f.png" alt="9e278b960a0c39aafdadbefe667db79f">
+</div>
+</div>
+<div class="paragraph">
 <p>I am a software engineer working on JavaEE based applications.
 I live in Paderborn, Germany,
 Everything you can find here is my personal opinion and does not necessarily reflect the opinions of my employer. Or even me.</p>
 </div>
 <div class="paragraph">
-<p>You can follow me on <a href="https://twitter.com/bobbytank42">twitter</a></p>
+<p><a href="https://twitter.com/bobbytank42" class="twitter-follow-button" data-show-count="false">Follow @bobbytank42</a> <script>!function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0],p=/^http:/.test(d.location)?'http':'https';if(!d.getElementById(id)){js=d.createElement(s);js.id=id;js.src=p+'://platform.twitter.com/widgets.js';fjs.parentNode.insertBefore(js,fjs);}}(document, 'script', 'twitter-wjs');</script></p>
+</div>
+<div class="paragraph">
+<p><g:follow href="https://plus.google.com/+RobertPanzer" rel="author"></g:follow></p>
 </div></p>
 
 	<hr>

@@ -127,7 +127,7 @@ public class AdditionalRubyStringMethods {
 ----
 <1> A Java method that should be mapped to a Ruby method must be annotated with `@JRubyMethod`.
     The property `name` defines the name of the method as it is to be invoked in Ruby.
-    The value of the `required` property indicates that the method takes no required property.
+    The value of the `required` property indicates that the method takes no required arguments.
 <2> The method may have an arbitrary method name in Java. 
     The argument list contains the JRuby `ThreadContext` to get access to the Ruby runtime and the reference to the object that receives the message.
     As the method takes no parameters there are no other arguments to this method.

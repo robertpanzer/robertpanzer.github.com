@@ -3,7 +3,7 @@ Robert Panzer
 2014-12-30
 :jbake-type: post
 :jbake-tags: JRuby, Asciidoctor
-:jbake-status: draft
+:jbake-status: published
 :jbake-disqus: true
 :preamble: JRuby brings Ruby to the Java platform. It does a great job at seamless integration between Ruby and Java code by directly mapping Ruby to Java and back again. Nevertheless there may be cases where a more customized behavior is desired. This post presents some ways for a deeper integration.
 

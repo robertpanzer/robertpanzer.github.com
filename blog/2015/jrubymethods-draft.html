@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"/>
+    <title>Implement JRuby methods in Java</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <meta name="keywords" content="">
+    <meta name="generator" content"JBake">
+
+    <!-- Le styles -->
+    <link href="/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/css/asciidoctor.css" rel="stylesheet">
+    <link href="/css/base.css" rel="stylesheet">
+    <link href="/css/bootstrap-responsive.min.css" rel="stylesheet">
+    <link href="/css/disqus.css" rel="stylesheet">
+
+    <!-- HTML5 shim, for IE6-8 support of HTML5 elements -->
+    <!--[if lt IE 9]>
+      <script src="/js/html5shiv.js"></script>
+    <![endif]-->
+
+    <script type="text/javascript" src="https://apis.google.com/js/plusone.js"></script>
+    <script src="https://apis.google.com/js/platform.js" async defer>
+      {lang: 'de'}
+    </script>
+
+    <script src="//platform.linkedin.com/in.js" type="text/javascript">
+        lang: en_US
+    </script>
+
+    <!-- Fav and touch icons -->
+    <!--<link rel="apple-touch-icon-precomposed" sizes="144x144" href="../assets/ico/apple-touch-icon-144-precomposed.png">
+    <link rel="apple-touch-icon-precomposed" sizes="114x114" href="../assets/ico/apple-touch-icon-114-precomposed.png">
+    <link rel="apple-touch-icon-precomposed" sizes="72x72" href="../assets/ico/apple-touch-icon-72-precomposed.png">
+    <link rel="apple-touch-icon-precomposed" href="../assets/ico/apple-touch-icon-57-precomposed.png">-->
+    <link rel="shortcut icon" href="favicon.ico">
+
+  </head>
+  <body>
+    <div id="fb-root"></div>
+    <script>(function(d, s, id) {
+      var js, fjs = d.getElementsByTagName(s)[0];
+      if (d.getElementById(id)) return;
+      js = d.createElement(s); js.id = id;
+      js.src = "//connect.facebook.net/de_DE/sdk.js#xfbml=1&version=v2.0";
+      fjs.parentNode.insertBefore(js, fjs);
+    }(document, 'script', 'facebook-jssdk'));</script>
+
+        <div id="wrap">
+	
+	<!-- Fixed navbar -->
+      <div class="navbar navbar-fixed-top">
+        <div class="navbar-inner">
+          <div class="container">
+            <button type="button" class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+              <span class="icon-bar"></span>
+              <span class="icon-bar"></span>
+              <span class="icon-bar"></span>
+            </button>
+            <a class="brand" href="/">Robert Panzers blog</a>
+            <div class="nav-collapse collapse">
+              <ul class="nav">
+                <li><a href="/index.html">Blog</a></li>
+                <li><a href="/hubtogo/index.html">Hub to go</a></li>
+                <li><a href="/about.html">About</a></li>
+              </ul>
+            </div><!--/.nav-collapse -->
+          </div>
+        </div>
+      </div>
+      <div class="container">
+	
+	<div class="page-header">
+		<h1>Implement JRuby methods in Java</h1>
+	</div>
+
+	<p><em>19 Januar 2015</em></p>
+
+<a href="https://twitter.com/share" class="twitter-share-button" data-url="https://robertpanzer.github.io/blog/2015/jrubymethods.html">Tweet</a> <script>!function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0],p=/^http:/.test(d.location)?'http':'https';if(!d.getElementById(id)){js=d.createElement(s);js.id=id;js.src=p+'://platform.twitter.com/widgets.js';fjs.parentNode.insertBefore(js,fjs);}}(document, 'script', 'twitter-wjs');</script>
+
+<g:plusone href="https://robertpanzer.github.io/blog/2015/jrubymethods.html"></g:plusone>
+
+<script type="IN/Share" data-url="https://robertpanzer.github.io/blog/2015/jrubymethods.html" data-counter="right"></script>
+
+<div class="fb-like" data-href="https://robertpanzer.github.io/blog/2015/jrubymethods.html" data-layout="button_count" data-action="like" data-show-faces="true" data-share="true"></div>
+
+
+	<p><div id="preamble">
+<div class="sectionbody">
+<div class="paragraph">
+<p>My last post has shown how to create pure Ruby classes in Java. This post goes deeper into how to implement Ruby methods in Java including methods with optional parameters, implementing object initializers and invoking Ruby methods including a super implementation written in Ruby. The practical example followed in this post is implementing a custom appender for the <a href="http://reidmorrison.github.io/semantic_logger">Semantic Logger</a> Ruby framework. Finally the rules for implementing Ruby methods in Java are summarized.</p>
+</div>
+<div class="paragraph">
+<p>Logging via <a href="http://reidmorrison.github.io/semantic_logger">Semantic Logger</a> in Ruby is very simple.
+The following Ruby example shows its usage:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-ruby" data-lang="ruby">require 'semantic_logger'
+logger = SemanticLogger['Hello']
+SemanticLogger.default_level = :debug
+SemanticLogger.add_appender(STDOUT, :info)
+logger.info 'Hello World'
+SemanticLogger.flush</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>In comparison to other logging frameworks for Ruby <a href="http://reidmorrison.github.io/semantic_logger">Semantic Logger</a> follows an architecture similar to Java Util Logging or Log4J where you have loggers and separate handlers or appenders respectively that can be plugged in.</p>
+</div>
+<div class="paragraph">
+<p>Our example that we follow in this article should connect <a href="http://reidmorrison.github.io/semantic_logger">Semantic Logger</a> to java.util.logging so that a Ruby program using <a href="http://reidmorrison.github.io/semantic_logger">Semantic Logger</a> for logging will automatically write its log entries into the same logs as configured for the Java application.
+This can simply be achieved by adding an appender that forwards all log events to java.util.logging.
+If you want to try out the example yourself you are invited to clone the project <a href="https://github.com/robertpanzer/jruby-logging-adapter">robertpanzer/jruby-logging-adapter</a> on GitHub.</p>
+</div>
+<div class="paragraph">
+<p>According to <a href="http://reidmorrison.github.io/semantic_logger/custom_appenders.html">Write your own Custom Appender</a> writing an own appender requires:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><a href="#Inherit">Inherit from <code>SemanticLogger::Appender::Base</code></a></p>
+</li>
+<li>
+<p><a href="#ImplementLog">Implement <code>log(log)</code></a> which needs to write to the relevant resource</p>
+</li>
+<li>
+<p><a href="#Initializer">In the initializer connect to the resource being logged to</a></p>
+</li>
+<li>
+<p><a href="#ImplementFlush">Implement <code>flush</code></a> if the resource can be flushed</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>So our appender has to be a Ruby class that extends <code>SemanticLogger::Appender::Base</code> and in its implementation of the <code>log</code> method it should forward the log event to java.util.logging.
+Therefore we prefer having the implementation in Java.
+The following diagram shows the class hierarchy of our example.</p>
+</div>
+<div class="imageblock" style="text-align: center">
+<div class="content">
+<img src="/img/loggerclassdiagram.png" alt="loggerclassdiagram">
+</div>
+<div class="title">Figure 1. Class diagram</div>
+</div>
+<div class="paragraph">
+<p>All red boxes in this diagram are Ruby classes or modules, yellow boxes are Java classes.
+The <code>SemanticLogger</code> module owns a list of appenders that are all called for every log event.
+We will define an own appender in form of the Ruby class <code>Foo::Bar::JavaSemanticLoggerAppender</code> that extends <code>SemanticLogger::Appender::Base</code>.
+But instead of providing the implementation in Ruby we only define the name in the Ruby namespace together with its ancestor or parent class and <em>back</em> this class with a Java implementation.
+This means that for every instance of our class that is created in Ruby an own instance of the backing Java class is created.
+Methods of the Java class that are explicitely registered will be available to Ruby and they will look like native Ruby methods.
+The Java implementation of our log appender will simply get the appropriate <code>java.util.logging.Logger</code> instance and send the log event to it. Variations of this implementation might send emails, publish messages to JMS etc.</p>
+</div>
+<div class="paragraph">
+<p>The following diagram shows what should happen when a Ruby library logs something via a <a href="http://reidmorrison.github.io/semantic_logger">Semantic Logger</a> logger.
+The <code>SemanticLogger</code> logger instance will invoke all appenders, one of them being our <code>Foo::Bar::JavaSemanticLoggerAppender</code> which is in fact backed by a Java instance of <code>foo.bar.SemanticLoggingJavaAppender</code>.
+This instance will invoke the java.util.logging log system.</p>
+</div>
+<div class="imageblock" style="text-align: center">
+<div class="content">
+<img src="/img/loggerseqdiagram.png" alt="loggerseqdiagram">
+</div>
+<div class="title">Figure 2. Sequence diagram</div>
+</div>
+<div class="paragraph">
+<p>But before starting to implement this solution we have to setup our Java project to load the <a href="http://reidmorrison.github.io/semantic_logger">Semantic Logger</a> gem and make it available to our Java program.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_setting_up_the_project">Setting up the project</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>This example uses the <a href="http://gradle.org">Gradle</a> build system.
+Its dependency management is capable of retrieving Java libraries from Maven central or JCenter and making them available to the project.
+External libraries for Ruby are distributed as gems that are archives containing the Ruby code, documentation and a gem specifier.
+<a href="http://gradle.org">Gradle</a> by itself is not able to download them from <a href="http://rubygems.org">rubygems.org</a> nor is JRuby able to consume gem archives that are available in the classpath as Java can with Jars.
+Therefore we use the <a href="https://github.com/jruby-gradle/jruby-gradle-plugin">JRuby Gradle Plugin</a>.
+This awesome plugin will automatically download and unpack all dependencies that are defined for the <code>gems</code> configuration.
+By default this plugin will manage the Gems in the <code>build/vendor</code> directory and you can find the unpacked content in <code>build/vendor/gems</code>.
+Our required gems have to be available in the runtime classpath.
+Therefore we also copy them to the <code>build/resources</code> so that it is available during the test but also in the resulting jar.</p>
+</div>
+<div class="paragraph">
+<p>The following simple <code>build.gradle</code> sets up the project to load the <a href="http://reidmorrison.github.io/semantic_logger">Semantic Logger</a> gem and make it available to the embedded JRuby runtime.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-groovy" data-lang="groovy">plugins {
+    id 'com.github.jruby-gradle.base' version '0.1.11' <b class="conum">(1)</b>
+}
+
+apply plugin: 'java'
+
+sourceCompatibility = 1.8
+version = '1.0'
+
+repositories {
+    jcenter()
+}
+
+dependencies {
+    compile group: 'org.jruby', name: 'jruby-complete', version: '1.7.18'
+    gems 'rubygems:semantic_logger:2.11.0' <b class="conum">(2)</b>
+}
+
+def gemFiles = fileTree(jruby.gemInstallDir) {
+    include 'specifications/*.gemspec'
+    include 'gems/*/lib/**'
+}
+
+task copyGems(type:Copy) { <b class="conum">(3)</b>
+    from gemFiles
+    into sourceSets.main.output.resourcesDir
+    dependsOn jrubyPrepareGems
+}
+
+processResources.dependsOn copyGems <b class="conum">(4)</b></code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<ol>
+<li>
+<p>Apply the <a href="https://github.com/jruby-gradle/jruby-gradle-plugin">JRuby Gradle Plugin</a>.
+This plugin downloads the required gems to the directory <code>build/vendor</code>.
+The <code>plugins</code> configuration element leverages the <a href="https://plugins.gradle.org">Gradle Plugin Model</a> to automatically download and apply community plugins.</p>
+</li>
+<li>
+<p>Required gems are defined using the <code>gems</code> configuration.
+The groupId is alway <code>rubygems</code> while the name of the dependency is the name of the gem.</p>
+</li>
+<li>
+<p>The <code>copyGems</code> task copies the gem files from the `build/vendor`directory to the resources dir so that they are available in the in the test classpath and will be packaged in the resulting jar of this project.</p>
+</li>
+<li>
+<p>Finally the <code>copyGems</code> task is hooked into the build so that it is invoked during the build.</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>The following Java program embeds the example from above in a simple Java program.
+It should write a log entry with the message <code>Hello World</code> to the console.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">import org.jruby.Ruby;
+import org.jruby.embed.ScriptingContainer;
+
+public class LogHelloWorld {
+
+    public static void main(String[] args) {
+
+        ScriptingContainer scriptingContainer = new ScriptingContainer();
+        Ruby ruby = scriptingContainer.getProvider().getRuntime();
+
+        ruby.evalScriptlet("require 'semantic_logger'");
+
+        ruby.evalScriptlet(
+                "logger = SemanticLogger['Hello']\n" +
+                "SemanticLogger.default_level = :debug\n" +
+                "SemanticLogger.add_appender(STDOUT, :debug)\n" +
+                "logger.info 'Hello World'\n" +
+                "SemanticLogger.flush");
+    }
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>After having set up the build we are now ready to implement our logging adapter by following the list mentioned above.
+A JUnit test will prove that our code works.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="Inherit">Inherit from <code>SemanticLogger::Appender::Base</code></h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>This task is straightforward.
+Instead of inheriting from Rubys <code>Object</code> class as shown in my last post we get a handle to the <code>SemanticLogger::Appender::Base</code> and define this one as the parent class.
+The Ruby appender class will be called <code>Foo::Bar::JavaSemanticLoggerAppender</code>.
+It will be backed by the Java class <code>foo.bar.SemanticLoggingJavaAppender</code>.
+Registration and adding the methods to the class will be done in the static method <code>SemanticLoggingJavaAppender.registerType</code> so that our Java implementation initially looks like this:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">package foo.bar;
+
+import ...
+
+public class SemanticLoggingJavaAppender extends RubyObject {
+
+    public static void registerType(Ruby ruby) {
+
+        RubyModule semanticLoggerModule = ruby.getModule("SemanticLogger");
+        RubyModule appenderModule = semanticLoggerModule.defineOrGetModuleUnder("Appender"); <b class="conum">(1)</b>
+
+        RubyClass baseClass = appenderModule.getClass("Base"); <b class="conum">(2)</b>
+
+        RubyModule fooModule = ruby.getOrCreateModule("Foo");
+        RubyModule barModule = fooModule.defineModuleUnder("Bar");
+
+        RubyClass extendedClass = barModule.defineClassUnder( <b class="conum">(3)</b>
+                "JavaSemanticLoggerAppender",
+                baseClass,
+                new ObjectAllocator() {
+                    @Override
+                    public IRubyObject allocate(Ruby ruby, RubyClass rubyClass) {
+                        return new SemanticLoggingJavaAppender(ruby, rubyClass);
+                    }
+                });
+
+        extendedClass.defineAnnotatedMethods(SemanticLoggingJavaAppender.class); <b class="conum">(4)</b>
+    }
+
+    public SemanticLoggingJavaAppender(Ruby ruby, RubyClass rubyClass) {
+        super(ruby, rubyClass);
+    }
+
+}</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<ol>
+<li>
+<p>Get the module that contains the base class and that should contain our Ruby class.</p>
+</li>
+<li>
+<p>Get the Ruby base class of our appender implementation.</p>
+</li>
+<li>
+<p>Define the new Ruby appender class named <code>Foo::Bar::JavaSemanticLoggerAppender</code> that is backed by the Java class <code>foo.bar.SemanticLoggingJavaAppender</code>.</p>
+</li>
+<li>
+<p>Make all methods annotated with <code>@JRubyMethod</code> of the class <code>SemanticLoggingJavaAppender</code> available to Ruby.</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>Now an appender can already be created and added to the <a href="http://reidmorrison.github.io/semantic_logger">Semantic Logger</a> framework like this:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-ruby" data-lang="ruby">ScriptingContainer scriptingContainer = new ScriptingContainer(); <b class="conum">(1)</b>
+ruby = scriptingContainer.getProvider().getRuntime();
+
+ruby.evalScriptlet("require 'semantic_logger'"); <b class="conum">(2)</b>
+SemanticLoggingJavaAppender.registerType(ruby); <b class="conum">(3)</b>
+ruby.evalScriptlet(
+        "SemanticLogger.add_appender Foo::Bar::JavaSemanticLoggerAppender.new"); <b class="conum">(4)</b></code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<ol>
+<li>
+<p>Initialize the JRuby runtime.</p>
+</li>
+<li>
+<p>Require the <a href="http://reidmorrison.github.io/semantic_logger">Semantic Logger</a> gem, so we can use it in Ruby.</p>
+</li>
+<li>
+<p>Register our appender class to the JRuby runtime.</p>
+</li>
+<li>
+<p>Add a new appender to <a href="http://reidmorrison.github.io/semantic_logger">Semantic Logger</a> that is an instance of our new class.</p>
+</li>
+</ol>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="ImplementLog">Implement the log method</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>When something is logged via <a href="http://reidmorrison.github.io/semantic_logger">Semantic Logger</a> the method <code>log</code> is called on every appender passing a <code>Log</code> struct that contains all infos like the timestamp, the log level, the log message itself etc.
+So before we implement the <code>log</code> method we implement an interface <code>LogEvent</code> that will be the Java counterpart of the Ruby struct <code>Log</code> that is described in <a href="http://reidmorrison.github.io/semantic_logger/log_struct.html" class="bare">http://reidmorrison.github.io/semantic_logger/log_struct.html</a>.
+Wrapping this struct behind the interface below is simply achieved using <code>JavaEmbedUtils.rubyToJava()</code>.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">package foo.bar;
+
+import java.util.Date;
+
+public interface LogEvent {
+
+    String getLevel();
+
+    String getThreadName();
+
+    String getName();
+
+    String getMessage();
+
+    Object getPayload();
+
+    Date getTime();
+
+    float getDuration();
+
+    Object getException();
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Our appender should forward all log events to Java Util Logging.
+Therefore the <code>log</code> method will:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>mask the argument using this interface</p>
+</li>
+<li>
+<p>create a <code>java.util.logging.LogRecord</code> from this LogEvent.</p>
+</li>
+<li>
+<p>log this <code>LogRecord</code></p>
+</li>
+</ol>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">package foo.bar;
+
+import ...
+
+public class SemanticLoggingJavaAppender extends RubyObject {
+
+    private static List&lt;LogEvent&gt; logEvents = new ArrayList&lt;LogEvent&gt;();
+
+    public SemanticLoggingJavaAppender(Ruby ruby, RubyClass rubyClass) {
+        super(ruby, rubyClass);
+    }
+
+    @JRubyMethod(name = "log", required = 1) <b class="conum">(1)</b>
+    public void handleLogEvent(ThreadContext context, IRubyObject log) {
+        LogEvent logEvent =
+            (LogEvent) JavaEmbedUtils.rubyToJava(context.getRuntime(), log, LogEvent.class); <b class="conum">(2)</b>
+
+        LogRecord logRecord = createJULLogRecordFromLogEvent(logEvent); <b class="conum">(3)</b>
+
+        Logger.getLogger(logEvent.getName()).log(logRecord); <b class="conum">(4)</b>
+    }
+
+    private LogRecord createJULLogRecordFromLogEvent(LogEvent logEvent) {
+        Level level;
+        switch (logEvent.getLevel()) {
+            case "trace":
+                level = Level.FINEST;
+                break;
+            case "debug":
+                level = Level.FINE;
+                break;
+            case "info":
+                level = Level.INFO;
+                break;
+            case "warn":
+            case "error":
+                level = Level.WARNING;
+                break;
+            case "fatal":
+                level = Level.SEVERE;
+                break;
+            default:
+                throw new IllegalArgumentException("Level: " + logEvent.getLevel());
+        }
+        LogRecord logRecord = new LogRecord(level, logEvent.getMessage());
+        logRecord.setLoggerName(logEvent.getName());
+        logRecord.setSourceClassName(logEvent.getName());
+        return logRecord;
+    }
+
+    public static void registerType(Ruby ruby) { /* Already shown above */ }
+}</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<ol>
+<li>
+<p>The log event expects one argument.
+Therefore the <code>@JRubyMethod</code> annotation declares one required parameter.
+As the method called by <a href="http://reidmorrison.github.io/semantic_logger">Semantic Logger</a> must be called <code>log</code> this name is set on the <code>name</code> argument to the <code>@JRubyMethod</code> annotation.
+The name of the Java method is irrelevant to JRuby in this scenario.</p>
+</li>
+<li>
+<p>Get a Java handle for the Log struct so that we can access its fields.</p>
+</li>
+<li>
+<p>Create a <code>java.util.logging.LogRecord</code> from the <code>LogEvent</code>.</p>
+</li>
+<li>
+<p>Forward the log event to the corresponding JUL logger.</p>
+</li>
+</ol>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="Initializer">Implement the initializer</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>For us there is actually no need to connect to any external resources in this scenario.
+But in this case as we are in one way or another all Java developers we will nevertheless implement an object initializer that calls its super implementation.
+The base class <code>SemanticLogger::Appender::Base</code> has an object initializer that takes 2 optional arguments and a block:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>A symbol for the level that can be passed to the appender to tell it that all lower log levels should be ignored.</p>
+</li>
+<li>
+<p>A filter in form of a regexp or a proc that filters log events.</p>
+</li>
+<li>
+<p>A block that should be used to format a log event.</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>It is the task of the appender to use all these parameters and in our constellation we don&#8217;t need it.
+But for demonstration purposes we want to implement this object initializer.</p>
+</div>
+<div class="paragraph">
+<p>The object initializer in Ruby has the name <code>initialize</code>.
+Therefore the name argument to the <code>@JRubyMethod</code> annotation must have the value <code>initialize</code>.
+As the initializer takes up to 2 optional arguments and a block the value of the <code>optional</code> parameter must be <code>2</code> and the value of the <code>required</code> parameter must be <code>0</code>.
+To invoke the super implementation we use the library method <code>org.jruby.runtime.Helpers.invokeSuper</code>.
+So the implementation of the <code>initialize</code> method looks like this:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">package foo.bar;
+
+import ...
+
+public class SemanticLoggingJavaAppender extends RubyObject {
+
+    public SemanticLoggingJavaAppender(Ruby ruby, RubyClass rubyClass) {
+        super(ruby, rubyClass);
+    }
+
+    @JRubyMethod(name = "log", required = 1)
+    public void handleLogEvent(ThreadContext context, IRubyObject log) {...}
+
+    @JRubyMethod(name = "initialize", required = 0, optional = 2) <b class="conum">(1)</b>
+    public void initAppender(ThreadContext context, IRubyObject[] args, Block block) { <b class="conum">(2)</b>
+
+        Helpers.invokeSuper(context, this, getMetaClass(), "initialize", args, block); <b class="conum">(3)</b>
+
+    }
+
+    public static void registerType(Ruby ruby) {...}
+}</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<ol>
+<li>
+<p>As described above the method must be called <code>initialize</code> and it takes 0 required and 2 optional arguments.
+The block is not declared in the annotation because you can always pass a block to a Ruby method.
+If you want to have access to this block you simply add it to the methods argument list.</p>
+</li>
+<li>
+<p>As we have optional arguments we get the parameters as an object array.
+The optional block is passed via the last parameter of type <code>Block</code>.</p>
+</li>
+<li>
+<p>We invoke the super implementation of the <code>initialize</code> via <code>Helpers.invokeSuper</code>.</p>
+</li>
+</ol>
+</div>
+<div class="paragraph">
+<p>When calling <code>invokeSuper</code> we have to pass</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>the current <code>ThreadContext</code></p>
+</li>
+<li>
+<p>the reference to <code>self</code> or <code>this</code></p>
+</li>
+<li>
+<p>the Ruby class of <code>this</code></p>
+</li>
+<li>
+<p>the method name to be invoked which must match the name of the current method, i.e. <code>initialize</code></p>
+</li>
+<li>
+<p>the arguments to be passed to the super implementation</p>
+</li>
+<li>
+<p>the block that should be passed to the super implementation as well.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>In contrast to <code>Helpers.invoke</code> the method <code>invokeSuper</code> that we call looks at the current call that is being executed and tries to find a matching implementation in the ancestors.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="ImplementFlush">Implement the <code>flush</code> method</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Since an implementation of <code>flush</code> would be an empty method and <code>SemanticLogger::Appender::Base</code> already has an empty implementation we can simply skip implementing this method.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_testing_it">Testing it</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Testing our logging adapter is quite easy.
+We simply implement a JUL test handler that stores all LogRecords it receives in a list.
+The JUnit test case adds this handler to the JUL root logger, calls <a href="http://reidmorrison.github.io/semantic_logger">Semantic Logger</a> to log a test message and finally checks if the test handler has received a matching LogRecord.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">package foo.bar;
+
+import ...
+
+public class WhenJavaLoggerIsRegistered {
+
+    private static Ruby ruby;
+
+    private static Logger rootLogger = Logger.getLogger("");
+
+    @BeforeClass
+    public static void setupJRuby() { <b class="conum">(1)</b>
+        ScriptingContainer scriptingContainer = new ScriptingContainer();
+        ruby = scriptingContainer.getProvider().getRuntime();
+
+        ruby.evalScriptlet("require 'semantic_logger'");
+        SemanticLoggingJavaAppender.registerType(ruby);
+    }
+
+    @Before <b class="conum">(2)</b>
+    public void setup() throws Exception {
+        ruby.evalScriptlet("SemanticLogger.add_appender Foo::Bar::JavaSemanticLoggerAppender.new");
+    }
+
+    @After <b class="conum">(3)</b>
+    public void cleanup() {
+        ruby.evalScriptlet("SemanticLogger.appenders.each {|appender| SemanticLogger.remove_appender appender}");
+
+        Stream.of(rootLogger.getHandlers())
+            .filter(handler -&gt; handler instanceof TestHandler)
+            .forEach(rootLogger::removeHandler);
+    }
+
+    @Test
+    public void should_invoke_appender() throws Exception {
+        // Given:
+        TestHandler testHandler = new TestHandler();    <b class="conum">(4)</b>
+        LogManager.getLogManager().getLogger("").addHandler(testHandler);
+        // When:
+        ruby.evalScriptlet("SemanticLogger['Hello'].info 'Hello World'"); <b class="conum">(5)</b>
+
+        ruby.evalScriptlet("SemanticLogger.flush");
+
+        // Then:
+        assertThat(testHandler.getAllLogRecords(), hasSize(1)); <b class="conum">(6)</b>
+        assertThat(testHandler.getAllLogRecords().get(0).getLevel(), is(Level.INFO));
+        assertThat(testHandler.getAllLogRecords().get(0).getMessage(), is("Hello World"));
+        assertThat(testHandler.getAllLogRecords().get(0).getLoggerName(), is("Hello"));
+    }
+}</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<ol>
+<li>
+<p>As shown before we setup the Ruby environment and register our logging adapter</p>
+</li>
+<li>
+<p>Before every test we add an instance of the logging adapter as a handler for <a href="http://reidmorrison.github.io/semantic_logger">Semantic Logger</a></p>
+</li>
+<li>
+<p>After every test we remove our <a href="http://reidmorrison.github.io/semantic_logger">Semantic Logger</a>  appender as well as our JUL test handler.</p>
+</li>
+<li>
+<p>First step of the test is adding a test handler to JUL.
+If everything works fine this handler will receive a <code>LogRecord</code>.</p>
+</li>
+<li>
+<p>This is what we test:
+We log something in Ruby using <a href="http://reidmorrison.github.io/semantic_logger">Semantic Logger</a>.</p>
+</li>
+<li>
+<p>Finally we check that everything worked as expected, the test handler should have received a <code>LogRecord</code> with the matching log level and message.</p>
+</li>
+</ol>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_the_rules_behind_it_implementing_ruby_methods_in_java">The rules behind it: Implementing Ruby methods in Java</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>The rules that have to be taken care of when implementing Ruby methods in Java are not too complicated but it is worth knowing them.
+You will also find them at <a href="https://github.com/jruby/jruby/wiki/JRubyMethod_Signatures" class="bare">https://github.com/jruby/jruby/wiki/JRubyMethod_Signatures</a>.</p>
+</div>
+<div class="paragraph">
+<p>For most use cases the <code>@JRubyMethod</code> annotation has 3 parameters:</p>
+</div>
+<div class="dlist">
+<dl>
+<dt class="hdlist1">name</dt>
+<dd>
+<p>This string contains the method name as it is available in Ruby.</p>
+</dd>
+<dt class="hdlist1">required</dt>
+<dd>
+<p>This int contains the number of required parameters.
+That is parameters that have no defaults in Ruby.</p>
+</dd>
+<dt class="hdlist1">optional</dt>
+<dd>
+<p>This int contains the number of optional parameters, that is parameters that have defaults.
+In contrast to Ruby there is no way to define the defaults in the method signature but it is up to the implementation to apply defaults for undefined parameters.</p>
+</dd>
+</dl>
+</div>
+<div class="paragraph">
+<p>The Java method should conform to these rules:</p>
+</div>
+<div class="olist arabic">
+<ol class="arabic">
+<li>
+<p>The method should declare <code>IRubyObject</code> as its return type.</p>
+</li>
+<li>
+<p>The name of the method is not important and has no relation to the name how it is called from Ruby.</p>
+</li>
+<li>
+<p>The parameter list may start with a <code>ThreadContext</code> that gives access to the JRuby runtime and many other properties.
+Although optional I found it good practice to always declare this formal parameter.</p>
+</li>
+<li>
+<p>If the method is static the next parameter should be an <code>IRubyObject</code> that points to self.
+This parameter is not declared for instance methods.</p>
+</li>
+<li>
+<p>If the method has 1 or 2 required and no optional parameters 1 or 2 <code>IRubyObject</code> parameters follow.</p>
+</li>
+<li>
+<p>In case of optional parameters or more than 3 required parameters the parameter list must contain an <code>IRubyObject[]</code> that will exactly contain as many arguments as were passed by the caller and not as this method supports.</p>
+</li>
+<li>
+<p>If your implementation wants to handle Blocks the parameter list may be finalized by a parameter of type <code>org.jruby.runtime.Block</code>.</p>
+</li>
+</ol>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<div class="title">Note</div>
+</td>
+<td class="content">
+The JRuby Wiki states that for up to 3 required and optional parameters you may define single <code>IRubyObject</code> parameters, but for me it always ended up in exceptions saying "Combining specific args with IRubyObject[] is not yet supported".
+Therefore with optional or more than three required parameters I always use the argument array, i.e. one parameter of type <code>IRubyObject[]</code>.
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Defining a Ruby method <code>f</code> that takes one required, no optional parameters and no Block could look like this:</p>
+</div>
+<div class="listingblock java">
+<div class="content">
+<pre class="prettyprint highlight"><code>@JRubyMethod(name="f", required=1)
+public IRubyObject rubyMethodF(ThreadContext context, IRubyObject arg0) { ... }</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>A method with one required parameter, two optional parameters and a Block would look like this:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="prettyprint highlight"><code class="language-java" data-lang="java">@JRubyMethod(name="g", required=1, optional=2)
+public void rubyMethodG(ThreadContext context, IRubyObject[] args, Block block) {...}</code></pre>
+</div>
+</div>
+</div>
+</div></p>
+
+	<hr>
+	
+		</div>
+		<div id="push"></div>
+    </div>
+
+        <div id="disqus_thread"></div>
+    <script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'robertpanzersblog'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+    
+
+    <!-- Le javascript
+    ================================================== -->
+    <!-- Placed at the end of the document so the pages load faster -->
+    <script src="/js/jquery-1.9.1.min.js"></script>
+    <script src="/js/bootstrap.min.js"></script>
+    <script src="/js/run_prettify.js"></script>
+    
+    <div id="footer">
+      <div class="container">
+        <p class="muted credit">&copy; 2013 | Mixed with <a href="http://twitter.github.com/bootstrap/">Bootstrap v2.3.1</a> | Baked with <a href="http://jbake.org">JBake v2.3.2</a></p>
+      </div>
+    </div>
+    
+
+  </body>
+</html>

@@ -1,0 +1,29 @@
+[plantuml,loggerclassdiagram,png]
+--
+class SemanticLogger << (M,#FF7700) Module>> #e9573f
+class SemanticLogger::Appender::Base #e9573f
+class Foo::Bar::JavaSemanticLoggerAppender #e9573f
+SemanticLogger : add_appender()
+"SemanticLogger::Appender::Base" : log()
+SemanticLogger o-- "many" SemanticLogger::Appender::Base
+
+class foo.bar.SemanticLoggingJavaAppender
+SemanticLogger::Appender::Base <|-down- Foo::Bar::JavaSemanticLoggerAppender
+Foo::Bar::JavaSemanticLoggerAppender -up- foo.bar.SemanticLoggingJavaAppender : "backed by"
+foo.bar.SemanticLoggingJavaAppender -left- java.util.logging.Logger : uses
+
+legend right
+  Red classes are Ruby classes
+  Yellow classes are Java classes
+endlegend
+--
+
+
+[plantuml,loggerseqdiagram,png]
+--
+participant "Ruby library" #e9573f
+participant "SemanticLogger::Logger" #e9573f
+"Ruby library"->"SemanticLogger::Logger":log
+"SemanticLogger::Logger"->SemanticLoggingJavaAppender:log
+SemanticLoggingJavaAppender->java.util.logging.Logger:log
+--

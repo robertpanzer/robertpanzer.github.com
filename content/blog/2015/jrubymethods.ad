@@ -9,7 +9,7 @@ Robert Panzer
 :semantic_logger: http://reidmorrison.github.io/semantic_logger[Semantic Logger]
 :jruby-gradle-plugin: https://github.com/jruby-gradle/jruby-gradle-plugin[JRuby Gradle Plugin]
 :preamble: My last post has shown how to create pure Ruby classes in Java. +
-This post goes deeper into how to implement Ruby methods in Java including methods with optional parameters, implementing object initializers and invoking Ruby methods including super implementation written in Ruby. +
+This post goes deeper into how to implement Ruby methods in Java including methods with optional parameters, implementing object initializers and invoking Ruby methods including a super implementation written in Ruby. +
 The practical example followed in this post is implementing a custom appender for the {semantic_logger} Ruby framework. +
 Finally the rules for implementing Ruby methods in Java are summarized.
 
@@ -28,10 +28,13 @@ logger.info 'Hello World'
 SemanticLogger.flush
 ----
 
-In comparison to other logging frameworks for Ruby {semantic_logger} follows an architecture similar to Java Util Logging or Log4J where you have loggers and separate appenders that can be plugged in. 
+In comparison to other logging frameworks for Ruby {semantic_logger} follows an architecture similar to Java Util Logging or Log4J where you have loggers and separate handlers or appenders respectively that can be plugged in. 
 
-Say that we want to use a Ruby library in our Java code embedded via JRuby that uses {semantic_logger} for logging and we want to forward error messages to some external system that we can best reach in Java.
-Therefore we want to implement a custom appender in Java.
+Our example that we follow in this article should connect {semantic_logger} to java.util.logging so that a Ruby program using {semantic_logger} for logging will automatically write its log entries into the same logs as configured for the Java application.
+This can simply be achieved by adding an appender that forwards all log events to java.util.logging.
+If you want to try out the example yourself you are invited to clone the project https://github.com/robertpanzer/jruby-logging-adapter[robertpanzer/jruby-logging-adapter] on GitHub.
+
+
 According to http://reidmorrison.github.io/semantic_logger/custom_appenders.html[Write your own Custom Appender] writing an own appender requires:
 
 - <<Inherit,Inherit from `SemanticLogger::Appender::Base`>>
@@ -39,12 +42,45 @@ According to http://reidmorrison.github.io/semantic_logger/custom_appenders.html
 - <<Initializer,In the initializer connect to the resource being logged to>>
 - <<ImplementFlush,Implement `flush`>> if the resource can be flushed
 
-But first we have to setup our Java project to load the {semantic_logger} gem and make it available to our Java program.
+So our appender has to be a Ruby class that extends `SemanticLogger::Appender::Base` and in its implementation of the `log` method it should forward the log event to java.util.logging.
+Therefore we prefer having the implementation in Java.
+The following diagram shows the class hierarchy of our example.
+
+.Class diagram
+image::/img/loggerclassdiagram.png[align="center"]
+
+All red boxes in this diagram are Ruby classes or modules, yellow boxes are Java classes.
+The `SemanticLogger` module owns a list of appenders that are all called for every log event.
+We will define an own appender in form of the Ruby class `Foo::Bar::JavaSemanticLoggerAppender` that extends `SemanticLogger::Appender::Base`.
+But instead of providing the implementation in Ruby we only define the name in the Ruby namespace together with its ancestor or parent class and _back_ this class with a Java implementation.
+This means that for every instance of our class that is created in Ruby an own instance of the backing Java class is created.
+Methods of the Java class that are explicitely registered will be available to Ruby and they will look like native Ruby methods.
+The Java implementation of our log appender will simply get the appropriate `java.util.logging.Logger` instance and send the log event to it. Variations of this implementation might send emails, publish messages to JMS etc.
+
+The following diagram shows what should happen when a Ruby library logs something via a {semantic_logger} logger.
+The `SemanticLogger` logger instance will invoke all appenders, one of them being our `Foo::Bar::JavaSemanticLoggerAppender` which is in fact backed by a Java instance of `foo.bar.SemanticLoggingJavaAppender`.
+This instance will invoke the java.util.logging log system.
+
+.Sequence diagram
+image::/img/loggerseqdiagram.png[align="center"]
+
+
+But before starting to implement this solution we have to setup our Java project to load the {semantic_logger} gem and make it available to our Java program.
 
 == Setting up the project
 
-This example uses {gradle} and the {jruby-gradle-plugin}.
-The following simple `build.gradle` sets up the project to load the {semantic_logger} gem and make it available to the embedded JRuby runtime:
+This example uses the {gradle} build system.
+Its dependency management is capable of retrieving Java libraries from Maven central or JCenter and making them available to the project.
+External libraries for Ruby are distributed as gems that are archives containing the Ruby code, documentation and a gem specifier.
+{gradle} by itself is not able to download them from http://rubygems.org[rubygems.org] nor is JRuby able to consume gem archives that are available in the classpath as Java can with Jars.
+Therefore we use the {jruby-gradle-plugin}.
+This awesome plugin will automatically download and unpack all dependencies that are defined for the `gems` configuration.
+By default this plugin will manage the Gems in the `build/vendor` directory and you can find the unpacked content in `build/vendor/gems`.
+Our required gems have to be available in the runtime classpath.
+Therefore we also copy them to the `build/resources` so that it is available during the test but also in the resulting jar.
+
+The following simple `build.gradle` sets up the project to load the {semantic_logger} gem and make it available to the embedded JRuby runtime.
+
 
 [source,groovy]
 ----
@@ -74,17 +110,21 @@ def gemFiles = fileTree(jruby.gemInstallDir) {
 task copyGems(type:Copy) { // <3>
     from gemFiles
     into sourceSets.main.output.resourcesDir
-    dependsOn jrubyPrepareGems // <4>
+    dependsOn jrubyPrepareGems
 }
 
-processResources.dependsOn copyGems
+processResources.dependsOn copyGems // <4>
 ----
-<1> Apply the {jruby-gradle-plugin}. This plugin downloads the required gems to the directory `build/vendor`.
+<1> Apply the {jruby-gradle-plugin}.
+    This plugin downloads the required gems to the directory `build/vendor`.
+    The `plugins` configuration element leverages the https://plugins.gradle.org[Gradle Plugin Model] to automatically download and apply community plugins.
 <2> Required gems are defined using the `gems` configuration.
-<3> The `copyGems` task copies the gem files to the resources dir so that they are available in the classpath.
-<4> Finally the `copyGems` task is hooked into the build so that this task is invoked during the build.
+    The groupId is alway `rubygems` while the name of the dependency is the name of the gem.
+<3> The `copyGems` task copies the gem files from the `build/vendor`directory to the resources dir so that they are available in the in the test classpath and will be packaged in the resulting jar of this project.
+<4> Finally the `copyGems` task is hooked into the build so that it is invoked during the build.
 
-The following Java program embeds the example from above in a simple Java program:
+The following Java program embeds the example from above in a simple Java program.
+It should write a log entry with the message `Hello World` to the console.
 
 [source,java]
 ----
@@ -110,14 +150,15 @@ public class LogHelloWorld {
 }
 ----
 
-The following sections show how to define a custom appender in Java via a JUnit test.
+After having set up the build we are now ready to implement our logging adapter by following the list mentioned above.
+A JUnit test will prove that our code works.
 
 [[Inherit]]
 == Inherit from `SemanticLogger::Appender::Base`
 
 This task is straightforward.
 Instead of inheriting from Rubys `Object` class as shown in my last post we get a handle to the `SemanticLogger::Appender::Base` and define this one as the parent class.
-The Ruby appender class will be called `SemanticLogger::Appender::JavaSemanticLoggerAppender`.
+The Ruby appender class will be called `Foo::Bar::JavaSemanticLoggerAppender`.
 It will be backed by the Java class `foo.bar.SemanticLoggingJavaAppender`.
 Registration and adding the methods to the class will be done in the static method `SemanticLoggingJavaAppender.registerType` so that our Java implementation initially looks like this: 
 
@@ -136,7 +177,10 @@ public class SemanticLoggingJavaAppender extends RubyObject {
 
         RubyClass baseClass = appenderModule.getClass("Base"); // <2>
 
-        RubyClass extendedClass = semanticLoggerModule.defineClassUnder( // <3>
+        RubyModule fooModule = ruby.getOrCreateModule("Foo");
+        RubyModule barModule = fooModule.defineModuleUnder("Bar");
+
+        RubyClass extendedClass = barModule.defineClassUnder( // <3>
                 "JavaSemanticLoggerAppender",
                 baseClass,
                 new ObjectAllocator() {
@@ -157,7 +201,7 @@ public class SemanticLoggingJavaAppender extends RubyObject {
 ----
 <1> Get the module that contains the base class and that should contain our Ruby class.
 <2> Get the Ruby base class of our appender implementation.
-<3> Define the new Ruby appender class named `JavaSemanticLoggerAppender` that is backed by the Java class `SemanticLoggingJavaAppender`.
+<3> Define the new Ruby appender class named `Foo::Bar::JavaSemanticLoggerAppender` that is backed by the Java class `foo.bar.SemanticLoggingJavaAppender`.
 <4> Make all methods annotated with `@JRubyMethod` of the class `SemanticLoggingJavaAppender` available to Ruby.
 
 Now an appender can already be created and added to the {semantic_logger} framework like this:
@@ -170,7 +214,7 @@ ruby = scriptingContainer.getProvider().getRuntime();
 ruby.evalScriptlet("require 'semantic_logger'"); // <2>
 SemanticLoggingJavaAppender.registerType(ruby); // <3>
 ruby.evalScriptlet(
-        "SemanticLogger.add_appender SemanticLogger::JavaSemanticLoggerAppender.new"); // <4>
+        "SemanticLogger.add_appender Foo::Bar::JavaSemanticLoggerAppender.new"); // <4>
 ----
 <1> Initialize the JRuby runtime.
 <2> Require the {semantic_logger} gem, so we can use it in Ruby.
@@ -214,7 +258,7 @@ Our appender should forward all log events to Java Util Logging.
 Therefore the `log` method will:
 
 1. mask the argument using this interface
-2. create a `java.util.logging.LogRecord' from this LogEvent.
+2. create a `java.util.logging.LogRecord` from this LogEvent.
 3. log this `LogRecord`
 
 [source,java]
@@ -233,14 +277,15 @@ public class SemanticLoggingJavaAppender extends RubyObject {
 
     @JRubyMethod(name = "log", required = 1) // <1>
     public void handleLogEvent(ThreadContext context, IRubyObject log) {
-
         LogEvent logEvent = 
             (LogEvent) JavaEmbedUtils.rubyToJava(context.getRuntime(), log, LogEvent.class); // <2>
-        LogRecord logRecord = createJULLogRecordFromLogEvent(logEvent, context); // <3>
+            
+        LogRecord logRecord = createJULLogRecordFromLogEvent(logEvent); // <3>
+        
         Logger.getLogger(logEvent.getName()).log(logRecord); // <4>
     }
 
-    private LogRecord createJULLogRecordFromLogEvent(LogEvent logEvent, ThreadContext context) {
+    private LogRecord createJULLogRecordFromLogEvent(LogEvent logEvent) {
         Level level;
         switch (logEvent.getLevel()) {
             case "trace":
@@ -325,7 +370,7 @@ public class SemanticLoggingJavaAppender extends RubyObject {
 }
 ----
 <1> As described above the method must be called `initialize` and it takes 0 required and 2 optional arguments.
-    The block is not declared in the annotation because you can always pass a block to an Ruby method.
+    The block is not declared in the annotation because you can always pass a block to a Ruby method.
     If you want to have access to this block you simply add it to the methods argument list.
 <2> As we have optional arguments we get the parameters as an object array.
     The optional block is passed via the last parameter of type `Block`.
@@ -376,7 +421,7 @@ public class WhenJavaLoggerIsRegistered {
 
     @Before // <2>
     public void setup() throws Exception {
-        ruby.evalScriptlet("SemanticLogger.add_appender SemanticLogger::JavaSemanticLoggerAppender.new");
+        ruby.evalScriptlet("SemanticLogger.add_appender Foo::Bar::JavaSemanticLoggerAppender.new");
     }
 
     @After // <3>
@@ -415,7 +460,7 @@ public class WhenJavaLoggerIsRegistered {
     We log something in Ruby using {semantic_logger}.
 <6> Finally we check that everything worked as expected, the test handler should have received a `LogRecord` with the matching log level and message.
 
-== Implementing Ruby methods in Java
+== The rules behind it: Implementing Ruby methods in Java
 
 The rules that have to be taken care of when implementing Ruby methods in Java are not too complicated but it is worth knowing them.
 You will also find them at https://github.com/jruby/jruby/wiki/JRubyMethod_Signatures.
@@ -462,7 +507,3 @@ A method with one required parameter, two optional parameters and a Block would 
 public void rubyMethodG(ThreadContext context, IRubyObject[] args, Block block) {...}
 ----
 
-
-== Testing it
-
-It you want to try that out yourself you are invited to clone https://github.com/robertpanzer/jruby-logging-adapter and take a look at the code.

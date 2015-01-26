@@ -3,14 +3,14 @@ Robert Panzer
 2015-01-19
 :jbake-type: post
 :jbake-tags: JRuby
-:jbake-status: draft
+:jbake-status: published
 :jbake-disqus: true
 :gradle: http://gradle.org[Gradle]
 :semantic_logger: http://reidmorrison.github.io/semantic_logger[Semantic Logger]
 :jruby-gradle-plugin: https://github.com/jruby-gradle/jruby-gradle-plugin[JRuby Gradle Plugin]
 :preamble: My last post has shown how to create pure Ruby classes in Java. +
 This post goes deeper into how to implement Ruby methods in Java including methods with optional parameters, implementing object initializers and invoking Ruby methods including a super implementation written in Ruby. +
-The practical example followed in this post is implementing a custom appender for the {semantic_logger} Ruby framework. +
+The practical example followed in this post is implementing a custom appender for the Semantic Logger Ruby framework. +
 Finally the rules for implementing Ruby methods in Java are summarized.
 
 {preamble}
@@ -75,7 +75,7 @@ External libraries for Ruby are distributed as gems that are archives containing
 {gradle} by itself is not able to download them from http://rubygems.org[rubygems.org] nor is JRuby able to consume gem archives that are available in the classpath as Java can with Jars.
 Therefore we use the {jruby-gradle-plugin}.
 This awesome plugin will automatically download and unpack all dependencies that are defined for the `gems` configuration.
-By default this plugin will manage the Gems in the `build/vendor` directory and you can find the unpacked content in `build/vendor/gems`.
+By default this plugin will manage the gems in the `build/vendor` directory and you can find the unpacked content in `build/vendor/gems`.
 Our required gems have to be available in the runtime classpath.
 Therefore we also copy them to the `build/resources` so that it is available during the test but also in the resulting jar.
 
@@ -119,7 +119,7 @@ processResources.dependsOn copyGems // <4>
     This plugin downloads the required gems to the directory `build/vendor`.
     The `plugins` configuration element leverages the https://plugins.gradle.org[Gradle Plugin Model] to automatically download and apply community plugins.
 <2> Required gems are defined using the `gems` configuration.
-    The groupId is alway `rubygems` while the name of the dependency is the name of the gem.
+    The groupId is always `rubygems` while the name of the dependency is the name of the gem.
 <3> The `copyGems` task copies the gem files from the `build/vendor`directory to the resources dir so that they are available in the in the test classpath and will be packaged in the resulting jar of this project.
 <4> Finally the `copyGems` task is hooked into the build so that it is invoked during the build.
 
